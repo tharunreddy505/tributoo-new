@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=Manrope:wght@200..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&family=Manrope:wght@200..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,14 +7,18 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    font-family: "Figtree", sans-serif;
   }
-
+  .font-serif {
+    font-family: "Figtree", sans-serif !important;
+  }
   body {
-    @apply font-sans text-dark bg-light antialiased;
+    font-family: "Figtree", sans-serif;
+    @apply text-dark bg-light antialiased;
   }
 
-  p {
-    font-family: 'Manrope', sans-serif;
+  p, h1, h2, h3, h4, h5, h6, span, div, input, textarea, button, select, label {
+    font-family: "Figtree", sans-serif;
   }
 }
 
@@ -100,14 +104,54 @@
     background: #9ca3af;
   }
 }
-/* Mouse Scroll Animation */
+
 @keyframes scrollDown {
-  0% { transform: translateY(0); opacity: 0; }
-  30% { opacity: 1; }
-  60% { opacity: 1; }
-  100% { transform: translateY(16px); opacity: 0; }
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .animate-scroll {
   animation: scrollDown 2s cubic-bezier(0.76, 0, 0.3, 1) infinite;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

@@ -66,13 +66,23 @@ const MemorialsListAdmin = () => {
                         />
                     </div>
 
-                    <Link
-                        to="/admin/memorials/new"
-                        className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors flex items-center gap-2"
-                    >
-                        <FontAwesomeIcon icon={faPlus} />
-                        Add New memorial
-                    </Link>
+                    {isAdmin ? (
+                        <Link
+                            to="/admin/memorials/new"
+                            className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors flex items-center gap-2"
+                        >
+                            <FontAwesomeIcon icon={faPlus} />
+                            Add New memorial
+                        </Link>
+                    ) : (
+                        <a
+                            href="/#pricing"
+                            className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors flex items-center gap-2"
+                        >
+                            <FontAwesomeIcon icon={faPlus} />
+                            Create a Tribute
+                        </a>
+                    )}
                 </div>
 
                 {/* Table */}

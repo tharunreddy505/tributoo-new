@@ -207,10 +207,17 @@ const DashboardAdmin = () => {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 self-start">
                     <h3 className="font-bold text-gray-700 mb-4">Quick Actions</h3>
                     <div className="space-y-3">
-                        <Link to="/admin/memorials/new" className="block w-full text-center bg-primary text-white py-2 rounded hover:bg-opacity-90 transition-colors font-medium text-sm flex items-center justify-center gap-2">
-                            <FontAwesomeIcon icon={faPlus} />
-                            Create New Memorial
-                        </Link>
+                        {isAdmin ? (
+                            <Link to="/admin/memorials/new" className="block w-full text-center bg-primary text-white py-2 rounded hover:bg-opacity-90 transition-colors font-medium text-sm flex items-center justify-center gap-2">
+                                <FontAwesomeIcon icon={faPlus} />
+                                Create New Memorial
+                            </Link>
+                        ) : (
+                            <a href="/#pricing" className="block w-full text-center bg-primary text-white py-2 rounded hover:bg-opacity-90 transition-colors font-medium text-sm flex items-center justify-center gap-2">
+                                <FontAwesomeIcon icon={faPlus} />
+                                Create New Memorial
+                            </a>
+                        )}
                         {isAdmin && (
                             <>
                                 <Link to="/admin/users" className="block w-full text-center bg-gray-100 text-gray-700 py-2 rounded hover:bg-gray-200 transition-colors font-medium text-sm">

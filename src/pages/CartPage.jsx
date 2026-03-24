@@ -1,13 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTributeContext } from '../context/TributeContext';
 import Navbar from '../components/layout/Navbar';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrash, faMinus, faPlus, faArrowLeft, faShoppingBag, faShieldAlt, faTruck, faUndo, faArrowRight, faCreditCard } from '@fortawesome/free-solid-svg-icons';
+import { faTrash, faMinus, faPlus, faArrowLeft, faShoppingBag, faShieldAlt, faTruck, faUndo, faArrowRight, faCreditCard, faStar, faCartPlus } from '@fortawesome/free-solid-svg-icons';
 import CouponSection from '../components/cart/CouponSection';
+import { API_URL } from '../config';
+
+const StarRating = ({ rating = 0, max = 5 }) => (
+    <div className="flex gap-0.5">
+        {Array.from({ length: max }).map((_, i) => (
+            <FontAwesomeIcon
+                key={i}
+                icon={faStar}
+                className={`text-[11px] ${i < Math.round(rating) ? 'text-gray-800' : 'text-gray-200'}`}
+            />
+        ))}
+    </div>
+);
 
 const CartPage = () => {
-    const { cart, removeFromCart, updateCartQuantity, showToast, appliedCoupon } = useTributeContext();
+    const { cart, removeFromCart, updateCartQuantity, addToCart, showToast, appliedCoupon } = useTributeContext();
+    const [suggestedProducts, setSuggestedProducts] = useState([]);
+
+    useEffect(() => {
+        const fetchSuggested = async () => {
+            try {
+                const res = await fetch(`${API_URL}/api/products`);
+                const data = await res.json();
+                const cartIds = new Set(cart.map(i => i.id));
+                const tributooProducts = data.filter(p => {
+                    const cat = (p.category || '').toLowerCase();
+                    return (cat.includes('tributoo') || cat.includes('tributo') || cat.includes('qr') || cat.includes('plate') || cat.includes('slate') || cat.includes('steel') || cat.includes('stone') || cat.includes('product'))
+                        && !p.is_lifetime && !p.is_voucher
+                        && !cartIds.has(p.id);
+                });
+                setSuggestedProducts(tributooProducts.slice(0, 6));
+            } catch { /* silent fail */ }
+        };
+        fetchSuggested();
+    }, [cart]);
     const navigate = useNavigate();
 
     const subtotal = cart.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
@@ -115,19 +147,23 @@ const CartPage = () => {
                                         <div className="mt-auto flex flex-wrap items-center justify-between gap-6">
                                             {/* Quantity Controls */}
                                             <div className="flex items-center gap-6 bg-dark text-white rounded-full px-6 py-2 shadow-xl shadow-dark/10">
-                                                <button
-                                                    onClick={() => updateCartQuantity(item.id, item.quantity - 1, item.metadata)}
-                                                    className="w-4 h-4 flex items-center justify-center text-white/40 hover:text-primary transition-colors"
-                                                >
-                                                    <FontAwesomeIcon icon={faMinus} size="xs" />
-                                                </button>
-                                                <span className="w-6 text-center font-bold text-sm tracking-tighter">{item.quantity}</span>
-                                                <button
-                                                    onClick={() => updateCartQuantity(item.id, item.quantity + 1, item.metadata)}
-                                                    className="w-4 h-4 flex items-center justify-center text-white/40 hover:text-primary transition-colors"
-                                                >
-                                                    <FontAwesomeIcon icon={faPlus} size="xs" />
-                                                </button>
+                                                {item.metadata?.type !== 'memorial_subscription' && (
+                                                    <button
+                                                        onClick={() => updateCartQuantity(item.id, item.quantity - 1, item.metadata)}
+                                                        className="w-4 h-4 flex items-center justify-center text-white/40 hover:text-primary transition-colors"
+                                                    >
+                                                        <FontAwesomeIcon icon={faMinus} size="xs" />
+                                                    </button>
+                                                )}
+                                                <span className={`w-6 text-center font-bold text-sm tracking-tighter ${item.metadata?.type === 'memorial_subscription' ? 'mx-4' : ''}`}>{item.quantity}</span>
+                                                {item.metadata?.type !== 'memorial_subscription' && (
+                                                    <button
+                                                        onClick={() => updateCartQuantity(item.id, item.quantity + 1, item.metadata)}
+                                                        className="w-4 h-4 flex items-center justify-center text-white/40 hover:text-primary transition-colors"
+                                                    >
+                                                        <FontAwesomeIcon icon={faPlus} size="xs" />
+                                                    </button>
+                                                )}
                                             </div>
 
                                             {/* Total Piece */}
@@ -140,6 +176,41 @@ const CartPage = () => {
                                 </div>
                             ))}
                         </div>
+
+                        {/* You may be interested in */}
+                        {suggestedProducts.length > 0 && (
+                            <div className="pt-10 border-t border-dark/5">
+                                <h3 className="text-lg font-bold text-dark mb-6">You may be interested in...</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    {suggestedProducts.map(product => (
+                                        <div key={product.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group">
+                                            <div className="aspect-square overflow-hidden bg-gray-50">
+                                                <img
+                                                    src={product.image_url || '/placeholder.png'}
+                                                    alt={product.name}
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                />
+                                            </div>
+                                            <div className="p-3">
+                                                <StarRating rating={product.average_rating || 3} />
+                                                <p className="text-sm font-medium text-dark mt-1 truncate">{product.name}</p>
+                                                <p className="text-sm font-bold text-dark">€ {parseFloat(product.price).toFixed(2)}</p>
+                                                <button
+                                                    onClick={() => {
+                                                        addToCart(product, 1);
+                                                        showToast(`${product.name} added to cart`, 'success');
+                                                    }}
+                                                    className="mt-2 w-full flex items-center justify-center gap-2 text-xs font-bold text-gray-500 hover:text-primary transition-colors py-1.5 border border-gray-100 hover:border-primary rounded-full"
+                                                >
+                                                    <FontAwesomeIcon icon={faCartPlus} className="text-[10px]" />
+                                                    Add to cart
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Trust Badges */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-10 border-t border-dark/5">
@@ -229,7 +300,6 @@ const CartPage = () => {
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>

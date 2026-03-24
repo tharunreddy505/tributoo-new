@@ -28,7 +28,8 @@ const CreateMemorialAdmin = () => {
         videos: [],
         videoUrls: [''],
         coverUrl: null,
-        status: 'public'
+        status: 'public',
+        documents: []
     });
     const [previews, setPreviews] = useState({
         photo: null,
@@ -40,6 +41,23 @@ const CreateMemorialAdmin = () => {
 
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const isAdmin = user.username === 'admin' || user.email?.includes('admin');
+
+    // Redirect non-admins to the pricing section on the frontend
+    useEffect(() => {
+        if (!isAdmin) {
+            navigate('/');
+            // Small timeout to allow navigate to complete before smooth scrolling
+            setTimeout(() => {
+                if (window.location.hash !== '#pricing') {
+                    window.location.hash = '#pricing';
+                }
+                const element = document.getElementById('pricing');
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 100);
+        }
+    }, [isAdmin, navigate]);
 
     // Check subscription + load products + user memorials
     useEffect(() => {
@@ -84,6 +102,8 @@ const CreateMemorialAdmin = () => {
 
     const needsToPay = !isAdmin && !availableSubscription && !subscriptionProduct;
 
+    const isFree = !isAdmin && (!availableSubscription || (availableSubscription.packageName && availableSubscription.packageName.toLowerCase().includes('free')));
+
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -119,9 +139,9 @@ const CreateMemorialAdmin = () => {
 
             if (type === 'images' && !isAdmin) {
                 const currentCount = formData.images?.length || 0;
-                if (currentCount + files.length > 5) {
-                    showAlert('Limit of 5 images reached for free version.', 'warning');
-                    const sliceCount = 5 - currentCount;
+                if (currentCount + files.length > 10) {
+                    showAlert('Limit of 10 images reached for free version.', 'warning');
+                    const sliceCount = 10 - currentCount;
                     if (sliceCount <= 0) return;
                     files.splice(sliceCount);
                 }
@@ -169,8 +189,18 @@ const CreateMemorialAdmin = () => {
         setLoading(true);
 
         try {
-            const birthDateFormatted = formData.birthDate ? new Date(formData.birthDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-            const passingDateFormatted = formData.passingDate ? new Date(formData.passingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+            const formatDateForDisplay = (dateStr) => {
+                if (!dateStr) return '';
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                }
+                return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            };
+
+            const birthDateFormatted = formatDateForDisplay(formData.birthDate);
+            const passingDateFormatted = formatDateForDisplay(formData.passingDate);
             const slug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
             setLoadingStatus('Creating memorial...');
@@ -246,9 +276,27 @@ const CreateMemorialAdmin = () => {
                                 }
                             } catch (err) {
                                 console.error("Gallery video upload error:", err);
-                            } finally {
-                                uploadedCount++;
-                                setLoadingStatus('Creating memorial...');
+                            }
+                        }
+                    }
+
+                    // Upload Documents
+                    if (formData.documents?.length > 0) {
+                        for (const doc of formData.documents) {
+                            if (doc.file) {
+                                try {
+                                    const uploadedMedia = await uploadMediaFile(createdTribute.id, 'document', doc.file, true);
+                                    if (uploadedMedia && uploadedMedia.id) {
+                                        await updateMediaDetails(uploadedMedia.id, {
+                                            title: doc.title,
+                                            description: doc.description
+                                        });
+                                    }
+                                } catch (err) {
+                                    console.error("Document upload error:", err);
+                                } finally {
+                                    setLoadingStatus('Creating memorial...');
+                                }
                             }
                         }
                     }
@@ -352,13 +400,20 @@ const CreateMemorialAdmin = () => {
                                         </div>
                                     );
                                 })}
-                                <div
-                                    onClick={() => document.getElementById('gallery-images-upload').click()}
-                                    className="aspect-square rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:text-primary hover:border-primary hover:bg-gray-50 cursor-pointer transition-colors"
-                                >
-                                    <FontAwesomeIcon icon={faPlus} className="text-xl mb-1" />
-                                    <span className="text-xs">Add Photos</span>
-                                </div>
+                                {isFree && formData.images.length >= 10 ? (
+                                    <div className="aspect-square rounded-lg border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-gray-300 bg-gray-50/50 p-4 text-center">
+                                        <FontAwesomeIcon icon={faLock} className="text-lg mb-2 opacity-50" />
+                                        <span className="text-[10px] font-bold uppercase leading-tight">Image Limit <br/> Reached</span>
+                                    </div>
+                                ) : (
+                                    <div
+                                        onClick={() => document.getElementById('gallery-images-upload').click()}
+                                        className="aspect-square rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:text-primary hover:border-primary hover:bg-gray-50 cursor-pointer transition-colors"
+                                    >
+                                        <FontAwesomeIcon icon={faPlus} className="text-xl mb-1" />
+                                        <span className="text-xs">Add Photos</span>
+                                    </div>
+                                )}
                             </div>
                             <input
                                 id="gallery-images-upload" type="file" multiple accept="image/*" className="hidden"
@@ -387,13 +442,21 @@ const CreateMemorialAdmin = () => {
                                         </div>
                                     );
                                 })}
-                                <div
-                                    onClick={() => document.getElementById('gallery-videos-upload').click()}
-                                    className="aspect-video rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:text-primary hover:border-primary hover:bg-gray-50 cursor-pointer transition-colors"
-                                >
-                                    <FontAwesomeIcon icon={faPlus} className="text-xl mb-1" />
-                                    <span className="text-xs">Add Videos</span>
-                                </div>
+                                {isFree ? (
+                                    <div className="md:col-span-2 aspect-[16/5] rounded-lg border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 px-6 text-center">
+                                        <FontAwesomeIcon icon={faCrown} className="text-lg mb-2 text-primary/40" />
+                                        <p className="text-sm font-bold text-gray-500">Videos are a Premium Feature</p>
+                                        <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">Upgrade to upload local videos</p>
+                                    </div>
+                                ) : (
+                                    <div
+                                        onClick={() => document.getElementById('gallery-videos-upload').click()}
+                                        className="aspect-video rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:text-primary hover:border-primary hover:bg-gray-50 cursor-pointer transition-colors"
+                                    >
+                                        <FontAwesomeIcon icon={faPlus} className="text-xl mb-1" />
+                                        <span className="text-xs">Add Videos</span>
+                                    </div>
+                                )}
                             </div>
                             <input
                                 id="gallery-videos-upload" type="file" multiple accept="video/*" className="hidden"
@@ -432,12 +495,97 @@ const CreateMemorialAdmin = () => {
                                         )}
                                     </div>
                                 ))}
+                                {isFree ? (
+                                    <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary/40 shadow-sm border border-gray-100">
+                                            <FontAwesomeIcon icon={faLink} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-600">Video Links Restricted</p>
+                                            <p className="text-[10px] text-gray-400 uppercase tracking-widest">Available in Premium & Corporate</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, videoUrls: [...prev.videoUrls, ''] }))}
+                                        className="text-primary text-xs font-bold hover:underline flex items-center gap-1"
+                                    >
+                                        <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> Add Another Video URL
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Documents Section */}
+                        <div className="mt-8 pt-6 border-t border-gray-100">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-4 tracking-wider">Documents (optional)</label>
+                            <div className="space-y-4">
+                                {formData.documents?.map((doc, idx) => (
+                                    <div key={idx} className="p-4 border border-gray-200 rounded-lg space-y-3 bg-gray-50/30">
+                                        <div className="flex flex-col gap-3">
+                                            <input
+                                                type="file"
+                                                accept=".pdf,.doc,.docx"
+                                                onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const extension = file.name.split('.').pop().toLowerCase();
+                                                        const isDoc = extension === 'doc' || extension === 'docx' || extension === 'pdf';
+                                                        
+                                                        if (!isDoc) {
+                                                            showToast("Only PDF and DOC files are allowed", "error");
+                                                            e.target.value = '';
+                                                            return;
+                                                        }
+                                                        const newDocs = [...formData.documents];
+                                                        newDocs[idx].file = file;
+                                                        setFormData(prev => ({ ...prev, documents: newDocs }));
+                                                    }
+                                                }}
+                                                className="text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                                            />
+                                            <input
+                                                type="text"
+                                                value={doc.title}
+                                                onChange={(e) => {
+                                                    const newDocs = [...formData.documents];
+                                                    newDocs[idx].title = e.target.value;
+                                                    setFormData(prev => ({ ...prev, documents: newDocs }));
+                                                }}
+                                                placeholder="Title"
+                                                className="w-full px-3 py-2 rounded border border-gray-300 focus:border-primary outline-none text-sm bg-white"
+                                            />
+                                            <textarea
+                                                value={doc.description}
+                                                onChange={(e) => {
+                                                    const newDocs = [...formData.documents];
+                                                    newDocs[idx].description = e.target.value;
+                                                    setFormData(prev => ({ ...prev, documents: newDocs }));
+                                                }}
+                                                placeholder="Description"
+                                                rows="2"
+                                                className="w-full px-3 py-2 rounded border border-gray-300 focus:border-primary outline-none text-sm bg-white resize-none"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newDocs = formData.documents.filter((_, i) => i !== idx);
+                                                setFormData(prev => ({ ...prev, documents: newDocs }));
+                                            }}
+                                            className="bg-primary text-white text-[10px] font-bold px-4 py-1.5 rounded hover:bg-opacity-90 transition-all shadow-sm"
+                                        >
+                                            REMOVE
+                                        </button>
+                                    </div>
+                                ))}
                                 <button
                                     type="button"
-                                    onClick={() => setFormData(prev => ({ ...prev, videoUrls: [...prev.videoUrls, ''] }))}
-                                    className="text-primary text-xs font-bold hover:underline flex items-center gap-1"
+                                    onClick={() => setFormData(prev => ({ ...prev, documents: [...(prev.documents || []), { file: null, title: '', description: '' }] }))}
+                                    className="bg-primary text-white text-xs font-bold px-4 py-2 rounded hover:bg-opacity-90 shadow flex items-center gap-2 transition-all"
                                 >
-                                    <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> Add Another Video URL
+                                    <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> ADD DOCUMENT
                                 </button>
                             </div>
                         </div>

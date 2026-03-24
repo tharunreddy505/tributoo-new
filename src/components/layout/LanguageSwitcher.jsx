@@ -38,7 +38,8 @@ const LanguageSwitcher = () => {
             navigate(newPath);
         }
 
-        // Also change i18n state immediately for responsiveness
+        // Save choice and update i18n
+        localStorage.setItem('tributtoo_lang', lng);
         i18n.changeLanguage(lng);
     };
 

@@ -167,6 +167,57 @@ const VisualBuilder = ({ initialHtml, initialCss, onSave, onClose }) => {
             }
         });
 
+        // Row Component Type
+        e.DomComponents.addType('row', {
+            isComponent: el => el.classList && el.classList.contains('row'),
+            model: {
+                defaults: {
+                    tagName: 'div',
+                    attributes: { class: 'row' },
+                    droppable: '.cell, .text, .image, .video, div, p, span, h1, h2, h3, h4, h5, h6',
+                    draggable: 'section, .section',
+                    style: {
+                        display: 'flex',
+                        'min-height': '50px',
+                        'width': '100%',
+                    }
+                }
+            }
+        });
+
+        // Cell Component Type
+        e.DomComponents.addType('cell', {
+            isComponent: el => el.classList && el.classList.contains('cell'),
+            model: {
+                defaults: {
+                    tagName: 'div',
+                    attributes: { class: 'cell' },
+                    droppable: true,
+                    draggable: '.row',
+                    style: {
+                        'flex-grow': '1',
+                        'flex-basis': '0%',
+                        'min-height': '50px',
+                        'padding': '10px',
+                    },
+                    traits: [
+                        {
+                            type: 'number',
+                            label: 'Flex Grow',
+                            name: 'flex-grow',
+                            changeProp: 1,
+                        }
+                    ]
+                },
+                init() {
+                    this.on('change:flex-grow', this.handleFlexChange);
+                },
+                handleFlexChange() {
+                    this.addStyle({ 'flex-grow': this.get('flex-grow') || 1 });
+                }
+            }
+        });
+
         // Add custom image component with alignment traits
         e.DomComponents.addType('image', {
             extend: 'image',
@@ -263,10 +314,44 @@ const VisualBuilder = ({ initialHtml, initialCss, onSave, onClose }) => {
         // Add custom text component with alignment traits
         e.DomComponents.addType('text', {
             extend: 'text',
-            isComponent: el => ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN', 'DIV'].includes(el.tagName) && el.childNodes.length <= 1,
+            isComponent: el => {
+                const textTags = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN', 'DIV'];
+                if (!textTags.includes(el.tagName)) return false;
+                
+                // If it's an empty DIV or has layout classes, it shouldn't be a text component
+                if (el.tagName === 'DIV') {
+                    const hasLayoutClass = el.classList.contains('row') || el.classList.contains('cell') || el.classList.contains('section');
+                    if (hasLayoutClass) return false;
+                    
+                    // If it has children elements (not just text), it's a container
+                    const hasElements = Array.from(el.childNodes).some(node => node.nodeType === 1);
+                    if (hasElements) return false;
+
+                    // If it's completely empty, it might be a container placeholder
+                    if (el.childNodes.length === 0) return false;
+                }
+                
+                return el.childNodes.length <= 1;
+            },
             model: {
                 defaults: {
                     traits: [
+                        {
+                            type: 'select',
+                            label: 'HTML Tag',
+                            name: 'tagName',
+                            options: [
+                                { value: 'p', name: 'Paragraph' },
+                                { value: 'h1', name: 'Heading 1' },
+                                { value: 'h2', name: 'Heading 2' },
+                                { value: 'h3', name: 'Heading 3' },
+                                { value: 'h4', name: 'Heading 4' },
+                                { value: 'h5', name: 'Heading 5' },
+                                { value: 'h6', name: 'Heading 6' },
+                                { value: 'span', name: 'Span' },
+                                { value: 'div', name: 'Div' },
+                            ],
+                        },
                         {
                             type: 'select',
                             label: 'Text Alignment',
@@ -298,13 +383,81 @@ const VisualBuilder = ({ initialHtml, initialCss, onSave, onClose }) => {
             }
         });
 
+        // Icon Component Type
+        e.DomComponents.addType('icon', {
+            isComponent: el => el.tagName === 'I' || (el.classList && Array.from(el.classList).some(c => c.startsWith('fa-'))),
+            model: {
+                defaults: {
+                    tagName: 'i',
+                    attributes: { class: 'fa fa-star text-4xl' },
+                    traits: [
+                        {
+                            type: 'text',
+                            label: 'Icon Class (FontAwesome)',
+                            name: 'class',
+                        },
+                        {
+                            type: 'select',
+                            label: 'Size',
+                            name: 'size',
+                            options: [
+                                { value: 'text-2xl', name: 'Small' },
+                                { value: 'text-4xl', name: 'Medium' },
+                                { value: 'text-6xl', name: 'Large' },
+                                { value: 'text-8xl', name: 'Extra Large' },
+                            ],
+                            changeProp: 1,
+                        },
+                        {
+                            type: 'color',
+                            label: 'Color',
+                            name: 'color',
+                            changeProp: 1,
+                        }
+                    ],
+                    style: {
+                        display: 'inline-block',
+                        padding: '10px',
+                        color: '#D4AF37'
+                    }
+                },
+                init() {
+                    this.on('change:size', this.handleSizeChange);
+                    this.on('change:color', this.handleColorChange);
+                },
+                handleSizeChange() {
+                    const size = this.get('size');
+                    const attrs = { ...this.getAttributes() };
+                    let classes = attrs.class || '';
+                    // Remove existing text-XXl classes
+                    classes = classes.replace(/text-(2|4|6|8)xl/g, '').trim();
+                    classes += ' ' + size;
+                    this.addAttributes({ class: classes.trim() });
+                },
+                handleColorChange() {
+                    this.addStyle({ color: this.get('color') });
+                }
+            }
+        });
+
         // Add custom blocks for your project
         const blockManager = e.BlockManager;
 
         blockManager.add('section-full', {
             label: 'Section',
             category: 'Layout',
-            content: { type: 'section', classes: ['p-10'], content: '<div class="row"><div class="cell"></div></div>' },
+            content: { 
+                type: 'section', 
+                classes: ['p-10'], 
+                components: [
+                    { 
+                        type: 'row', 
+                        components: [
+                            { type: 'cell', classes: ['bg-gray-50'] }
+                        ] 
+                    }
+                ] 
+            },
             attributes: { class: 'fa fa-square-o' }
         });
 
@@ -334,6 +487,28 @@ const VisualBuilder = ({ initialHtml, initialCss, onSave, onClose }) => {
             category: 'Basic',
             content: { type: 'video', style: { width: '100%', height: '350px' } },
             attributes: { class: 'fa fa-youtube-play' }
+        });
+
+        blockManager.add('icon-block', {
+            label: 'Icon',
+            category: 'Basic',
+            content: { type: 'icon' },
+            attributes: { class: 'fa fa-star' }
+        });
+
+        blockManager.add('icon-box', {
+            label: 'Icon Box',
+            category: 'Tributtoo',
+            content: {
+                type: 'div',
+                classes: ['icon-box', 'p-6', 'text-center', 'border', 'rounded-lg', 'bg-white', 'shadow-sm'],
+                components: [
+                    { type: 'icon', attributes: { class: 'fa fa-heart text-4xl' }, style: { color: '#D4AF37', 'margin-bottom': '15px' } },
+                    { type: 'text', content: '<h4>Your Title</h4>', style: { 'margin-bottom': '10px' } },
+                    { type: 'text', content: '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>', style: { color: '#666', 'font-size': '14px' } }
+                ]
+            },
+            attributes: { class: 'fa fa-list-alt' }
         });
 
         // Load initial content AFTER component types are defined
@@ -376,6 +551,29 @@ const VisualBuilder = ({ initialHtml, initialCss, onSave, onClose }) => {
                     }
                 }
             });
+
+            // Inject visual aids for the editor
+            const css = `
+                .cell:empty {
+                    min-height: 80px;
+                    outline: 1px dashed #ccc;
+                    outline-offset: -2px;
+                    background-color: rgba(0,0,0,0.02);
+                }
+                .cell:empty::after {
+                    content: 'Drop content here';
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    color: #aaa;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+                .row { min-height: 50px; }
+            `;
+            e.addStyle(css);
         });
 
         setEditor(e);

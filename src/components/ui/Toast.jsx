@@ -29,13 +29,15 @@ const Toast = ({ message, type = 'success', onClose, duration = 5000 }) => {
     const icons = {
         success: faCheckCircle,
         error: faExclamationCircle,
-        info: faExclamationCircle
+        info: faExclamationCircle,
+        warning: faExclamationCircle
     };
 
     const colors = {
         success: 'from-emerald-500 to-teal-600',
         error: 'from-red-500 to-rose-600',
-        info: 'from-blue-500 to-indigo-600'
+        info: 'from-blue-500 to-indigo-600',
+        warning: 'from-amber-400 to-orange-500'
     };
 
     return (

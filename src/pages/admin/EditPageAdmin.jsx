@@ -1,18 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faArrowLeft, faEye, faLink } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faArrowLeft, faEye, faLink, faGlobe } from '@fortawesome/free-solid-svg-icons';
 import { useTributeContext } from '../../context/TributeContext';
 import { decodeHtml } from '../../utils/htmlUtils';
 import { Editor } from '@tinymce/tinymce-react';
 import VisualBuilder from '../../components/admin/VisualBuilder';
 import MediaPickerModal from '../../components/admin/MediaPickerModal';
 
+const LANGUAGES = [
+    { code: 'en', label: 'English', flag: 'GB' },
+    { code: 'de', label: 'Deutsch', flag: 'DE' },
+    { code: 'it', label: 'Italiano', flag: 'IT' },
+];
+
 const EditPageAdmin = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { pages, addPage, updatePage, showToast, showAlert } = useTributeContext();
 
+    const [activeLang, setActiveLang] = useState('en');
     const [formData, setFormData] = useState({
         title: '',
         content: '',
@@ -21,11 +28,32 @@ const EditPageAdmin = () => {
         seo_title: '',
         seo_description: '',
         seo_keywords: '',
-        og_image: ''
+        og_image: '',
+        translations: {}
     });
     const [loading, setLoading] = useState(false);
     const [isBuilderOpen, setIsBuilderOpen] = useState(false);
     const [mediaPicker, setMediaPicker] = useState({ isOpen: false, callback: null, type: 'image' });
+
+    // Get current language's title/content
+    const getLangField = (field) => {
+        if (activeLang === 'en') return formData[field] || '';
+        return formData.translations?.[activeLang]?.[field] || '';
+    };
+
+    const setLangField = (field, value) => {
+        if (activeLang === 'en') {
+            setFormData(prev => ({ ...prev, [field]: value }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                translations: {
+                    ...prev.translations,
+                    [activeLang]: { ...prev.translations?.[activeLang], [field]: value }
+                }
+            }));
+        }
+    };
 
     useEffect(() => {
         if (id) {
@@ -39,7 +67,8 @@ const EditPageAdmin = () => {
                     seo_title: page.seo_title || '',
                     seo_description: page.seo_description || '',
                     seo_keywords: page.seo_keywords || '',
-                    og_image: page.og_image || ''
+                    og_image: page.og_image || '',
+                    translations: page.translations || {}
                 });
             }
         }
@@ -97,6 +126,32 @@ const EditPageAdmin = () => {
                 </div>
             </div>
 
+            {/* Language Switcher */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2 text-gray-400 text-sm font-bold uppercase tracking-wider">
+                        <FontAwesomeIcon icon={faGlobe} />
+                        <span>Language</span>
+                    </div>
+                    <div className="flex gap-1">
+                        {LANGUAGES.map(lang => (
+                            <button
+                                key={lang.code}
+                                onClick={() => setActiveLang(lang.code)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all border ${activeLang === lang.code ? 'bg-primary text-white border-primary' : 'bg-white text-gray-500 border-gray-200 hover:border-primary hover:text-primary'}`}
+                            >
+                                <span className="text-xs font-black opacity-70">{lang.flag}</span>
+                                {lang.label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-primary ml-2">
+                        Editing <strong>{LANGUAGES.find(l => l.code === activeLang)?.label}</strong> version.
+                        {activeLang !== 'en' && ' Title & Content are per-language. All other settings are shared.'}
+                    </p>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 space-y-4">
@@ -104,11 +159,11 @@ const EditPageAdmin = () => {
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Page Title</label>
                             <input
                                 type="text"
-                                value={formData.title}
-                                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                onBlur={!id ? generateSlug : undefined}
+                                value={getLangField('title')}
+                                onChange={(e) => setLangField('title', e.target.value)}
+                                onBlur={!id && activeLang === 'en' ? generateSlug : undefined}
                                 className="w-full text-xl font-bold border-b border-gray-200 py-2 outline-none focus:border-primary transition-colors"
-                                placeholder="Enter title here"
+                                placeholder={`Enter title in ${LANGUAGES.find(l => l.code === activeLang)?.label}`}
                                 required
                             />
                         </div>
@@ -116,6 +171,7 @@ const EditPageAdmin = () => {
                         <div>
                             <div className="flex items-center justify-between mb-2">
                                 <label className="block text-xs font-bold text-gray-500 uppercase">Content</label>
+                                {activeLang === 'en' && (
                                 <button
                                     type="button"
                                     onClick={() => setIsBuilderOpen(true)}
@@ -123,9 +179,10 @@ const EditPageAdmin = () => {
                                 >
                                     {formData.content.includes('<style>') ? 'Re-open Visual Builder' : 'Launch Visual Builder (Elementor Mode)'}
                                 </button>
+                                )}
                             </div>
 
-                            {formData.content.includes('<style>') ? (
+                            {activeLang === 'en' && formData.content.includes('<style>') ? (
                                 <div className="relative group">
                                     <div className="absolute inset-0 bg-gray-50/50 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <p className="text-gray-500 font-medium mb-4">This page uses Visual Builder layout.</p>
@@ -171,8 +228,9 @@ const EditPageAdmin = () => {
                                 </div>
                             ) : (
                                 <Editor
+                                    key={activeLang}
                                     apiKey={import.meta.env.VITE_TINYMCE_KEY}
-                                    value={formData.content}
+                                    value={getLangField('content')}
                                     init={{
                                         height: 500,
                                         menubar: true,
@@ -196,7 +254,7 @@ const EditPageAdmin = () => {
                                             });
                                         }
                                     }}
-                                    onEditorChange={(content) => setFormData(prev => ({ ...prev, content }))}
+                                    onEditorChange={(content) => setLangField('content', content)}
                                 />
                             )}
                         </div>

@@ -26,6 +26,19 @@ const AuthPage = ({ mode = 'login' }) => {
     const redirectParam = searchParams.get('redirect');
     const [isLogin, setIsLogin] = useState(mode === 'login');
     const [role, setRole] = useState('private');
+
+    // Handle package-specific defaults
+    const pkgParam = searchParams.get('package');
+    React.useEffect(() => {
+        if (!isLogin) {
+            if (pkgParam === 'corporate') {
+                setRole('company');
+            } else if (pkgParam === 'premium') {
+                setRole('private');
+            }
+        }
+    }, [pkgParam, isLogin]);
+
     const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         username: '',
@@ -136,6 +149,8 @@ const AuthPage = ({ mode = 'login' }) => {
             if (response.ok) {
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('user', JSON.stringify(data.user));
+                // Notify TributeContext to reload the user-specific cart
+                window.dispatchEvent(new Event('storage'));
 
                 // If user came from "Create Memorial" flow, send them back to open the modal
                 if (redirectParam === 'create-memorial') {
@@ -309,26 +324,30 @@ const AuthPage = ({ mode = 'login' }) => {
                                 <div className="space-y-4 mb-8">
                                     <label className="block text-gray-700 font-medium">{t('auth.choose_role')}</label>
                                     <div className="flex gap-8">
-                                        <button
-                                            type="button"
-                                            onClick={() => setRole('private')}
-                                            className="flex items-center gap-3 group"
-                                        >
-                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${role === 'private' ? 'border-[#D4AF37] bg-[#D4AF37]' : 'border-gray-300'}`}>
-                                                {role === 'private' && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                                            </div>
-                                            <span className={`font-medium ${role === 'private' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{t('auth.role_private')}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setRole('company')}
-                                            className="flex items-center gap-3 group"
-                                        >
-                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${role === 'company' ? 'border-[#D4AF37] bg-[#D4AF37]' : 'border-gray-300'}`}>
-                                                {role === 'company' && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                                            </div>
-                                            <span className={`font-medium ${role === 'company' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{t('auth.role_company')}</span>
-                                        </button>
+                                        {(pkgParam !== 'corporate') && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setRole('private')}
+                                                className="flex items-center gap-3 group"
+                                            >
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${role === 'private' ? 'border-[#D4AF37] bg-[#D4AF37]' : 'border-gray-300'}`}>
+                                                    {role === 'private' && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                </div>
+                                                <span className={`font-medium ${role === 'private' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{t('auth.role_private')}</span>
+                                            </button>
+                                        )}
+                                        {(pkgParam === 'corporate' || !pkgParam || pkgParam === 'free') && (pkgParam !== 'premium') && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setRole('company')}
+                                                className="flex items-center gap-3 group"
+                                            >
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${role === 'company' ? 'border-[#D4AF37] bg-[#D4AF37]' : 'border-gray-300'}`}>
+                                                    {role === 'company' && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                </div>
+                                                <span className={`font-medium ${role === 'company' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>{t('auth.role_company')}</span>
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}

@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faHeart, faQuoteLeft, faImage, faBookOpen, faPlay, faPen, faShareNodes, faCopy, faGlobe, faLink, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faBookOpen, faPlay, faPen, faShareNodes, faTimes, faChevronLeft, faChevronRight, faLockOpen, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useTributeContext } from '../context/TributeContext';
 import { useTranslation } from 'react-i18next';
@@ -9,15 +9,28 @@ import TranslatedText from '../components/TranslatedText';
 import Navbar from '../components/layout/Navbar';
 
 const MemorialPage = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const { id } = useParams();
-    const { tributes, incrementViewCount, updateTribute, addComment, isInitialized, settings } = useTributeContext();
+    const { tributes, incrementViewCount, addComment, isInitialized } = useTributeContext();
     const location = useLocation();
-    const navigate = useNavigate();
     const viewTracked = useRef(false);
 
     const [isCondolenceModalOpen, setIsCondolenceModalOpen] = useState(false);
-    const [condolenceForm, setCondolenceForm] = useState({ name: '', comment: '' });
+    const [condolenceForm, setCondolenceForm] = useState({ name: '', email: '', comment: '', saveDetails: false });
+    const [selectedImages, setSelectedImages] = useState([]);
+    const [guestbookIndex, setGuestbookIndex] = useState(0);
+    const [lightbox, setLightbox] = useState({ isOpen: false, index: 0 });
+    const [videoModal, setVideoModal] = useState({ isOpen: false, url: '', type: 'url' });
+    const [showAllPhotos, setShowAllPhotos] = useState(false);
+    const [showAllVideos, setShowAllVideos] = useState(false);
+    const fileInputRef = useRef(null);
+    const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Find tribute from context (handles persisted data)
     const tribute = tributes.find(t => String(t.id) === id || t.slug === id);
@@ -47,7 +60,60 @@ const MemorialPage = () => {
         id: rawData?.id || 'demo'
     };
 
+    const galleryImages = (data.images && data.images.length > 0 ? data.images : [
+        "https://images.unsplash.com/photo-1544299863-71a5c60205b3?q=80&w=2670&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1582239088698-c91726a97864?q=80&w=2670&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1511895426328-dc8714191300?q=80&w=2674&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?q=80&w=2832&auto=format&fit=crop",
+    ]);
+    
+    // Combine video URLs and uploaded files (Files first, then URLs)
+    const allVideos = [
+        ...(data.videos || []).map(v => ({ type: 'file', url: v.url, id: v.id, title: v.title })),
+        ...(data.videoUrls || []).map(url => ({ type: 'url', url }))
+    ];
+
+    const openLightbox = (index) => setLightbox({ isOpen: true, index });
+    const closeLightbox = () => setLightbox({ ...lightbox, isOpen: false });
+    const nextImage = (e) => {
+        if (e) e.stopPropagation();
+        setLightbox(prev => ({ ...prev, index: (prev.index + 1) % galleryImages.length }));
+    };
+    const prevImage = (e) => {
+        if (e) e.stopPropagation();
+        setLightbox(prev => ({ ...prev, index: (prev.index - 1 + galleryImages.length) % galleryImages.length }));
+    };
+
     const isDemo = !tribute && !memorialData;
+
+    const getYouTubeThumbnail = (url) => {
+        const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = url.match(regExp);
+        if (match && match[2].length === 11) {
+            return `https://img.youtube.com/vi/${match[2]}/maxresdefault.jpg`;
+        }
+        return null;
+    };
+
+    const getEmbedUrl = (url) => {
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            const id = url.split('v=')[1]?.split('&')[0] || url.split('/').pop();
+            return `https://www.youtube.com/embed/${id}?autoplay=1`;
+        }
+        if (url.includes('vimeo.com')) {
+            const id = url.split('/').pop();
+            return `https://player.vimeo.com/video/${id}?autoplay=1`;
+        }
+        return url;
+    };
+
+    const openVideo = (video) => {
+        setVideoModal({
+            isOpen: true,
+            url: video.type === 'url' ? getEmbedUrl(video.url) : video.url,
+            type: video.type
+        });
+    };
 
     // Reset view tracking when ID changes
     useEffect(() => {
@@ -77,7 +143,7 @@ const MemorialPage = () => {
             <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center">
                 <div className="text-center">
                     <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-500 font-serif lowercase italic">{t('memorial_page.loading')}</p>
+                    <p className="text-gray-500 font-sans lowercase italic">{t('memorial_page.loading')}</p>
                 </div>
             </div>
         );
@@ -89,22 +155,58 @@ const MemorialPage = () => {
         alert("Link copied to clipboard!");
     };
 
-    const handleCondolenceSubmit = (e) => {
+    const handleFileChange = (e) => {
+        const files = Array.from(e.target.files);
+        const newImages = files.map(file => ({
+            file,
+            preview: URL.createObjectURL(file)
+        }));
+        setSelectedImages(prev => [...prev, ...newImages]);
+    };
+
+    const removeImage = (index) => {
+        setSelectedImages(prev => {
+            URL.revokeObjectURL(prev[index].preview);
+            return prev.filter((_, i) => i !== index);
+        });
+    };
+
+    const fileToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    };
+
+    const handleCondolenceSubmit = async (e) => {
         e.preventDefault();
         if (!condolenceForm.name || !condolenceForm.comment) return;
+
+        let base64Image = null;
+        if (selectedImages.length > 0) {
+            try {
+                base64Image = await fileToBase64(selectedImages[0].file);
+            } catch (err) { console.error("Base64 conversion failed:", err); }
+        }
 
         if (tribute) {
             // Use context function
             addComment(tribute.id, {
                 name: condolenceForm.name,
-                text: condolenceForm.comment
+                text: condolenceForm.comment,
+                email: condolenceForm.email,
+                image: base64Image
             });
+
         } else {
             // Demo mode logic
             alert("This is a demo page. Your message would appear in the guestbook.");
         }
 
-        setCondolenceForm({ name: '', comment: '' });
+        setSelectedImages([]);
+        setCondolenceForm({ name: '', email: '', comment: '', saveDetails: false });
         setIsCondolenceModalOpen(false);
     };
 
@@ -113,538 +215,599 @@ const MemorialPage = () => {
 
     // Prepare comments to display: use tribute comments if exist, otherwise mockup defaults
     const displayComments = (data.comments && data.comments.length > 0) ? data.comments : [
-        { name: "Sarah Mitchell", date: "January 20, 2026", text: t('memorial_page.demo_comment_0_text') },
-        { name: "Michael Chen", date: "January 18, 2026", text: t('memorial_page.demo_comment_1_text') },
-        { name: "Rebecca Thompson", date: "January 17, 2026", text: t('memorial_page.demo_comment_2_text') },
-        { name: "David Mitchell", date: "January 16, 2026", text: t('memorial_page.demo_comment_3_text') }
+        { name: "Sarah Mitchell", date: "January 20, 2026", text: t('memorial_page.demo_comment_3_text', 'Mom, you were my guiding star, my safe harbor and my greatest teacher. Your love made me the person I am today. I miss you every single day.'), imageUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop" },
+        { name: "Laura Collins", date: "January 20, 2026", text: t('memorial_page.demo_comment_4_text', 'Your kindness and warmth touched everyone around you. We will carry your memory in our hearts forever.'), imageUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=2576&auto=format&fit=crop" },
+        { name: "Michael Chen", date: "January 18, 2026", text: t('memorial_page.demo_comment_1_text'), imageUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=2670&auto=format&fit=crop" },
+        { name: "Rebecca Thompson", date: "January 17, 2026", text: t('memorial_page.demo_comment_2_text'), imageUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2670&auto=format&fit=crop" }
     ];
 
     return (
         <div className="bg-[#FAF9F6] min-h-screen font-sans selection:bg-primary/30 text-dark">
-            {/* Navigation (Transparent on dark hero) */}
-            {/* Navigation */}
             <Navbar />
 
-            {/* Hero Section - Dark & Elegant */}
-            <header className="relative h-screen min-h-[700px] flex items-center justify-center overflow-hidden bg-[#111111]">
-                {/* Custom Cover Background */}
-                {data.coverUrl && (
-                    <div className="absolute inset-0 z-0">
-                        <img
-                            src={data.coverUrl}
-                            alt=""
-                            className="w-full h-full object-cover opacity-30 mix-blend-overlay"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-b from-[#111111]/80 via-[#111111]/60 to-[#111111]"></div>
-                    </div>
-                )}
+            {/* Top Draft Banner (Fixed according to screenshot) */}
+            {(tribute?.status === 'draft' || isDemo) && (
+                <div className="bg-[#F1E9DA] py-3 text-center text-[10px] tracking-[0.15em] text-dark/60 uppercase font-medium border-b border-dark/5">
+                    {t('memorial_page.draft_mode_banner')}
+                </div>
+            )}
 
-                {/* Decorative background circle */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-white/5 rounded-full pointer-events-none"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-white/5 rounded-full pointer-events-none"></div>
+            <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 lg:py-10 relative">
+                {/* Decorative Vertical Side Line (Matching screenshot) */}
+                <div className="absolute right-0 top-32 bottom-32 w-[1px] bg-gradient-to-b from-transparent via-primary/10 to-transparent hidden lg:block"></div>
 
-                <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
-                    {/* Profile Image - Centered Circular */}
-                    <div className="relative mb-10 inline-block">
-                        <div className="w-56 h-56 rounded-full p-1 border border-primary/40 mx-auto relative shadow-2xl">
-                            {/* Gold ring internal */}
-                            <div className="w-full h-full rounded-full border-[3px] border-[#111111] overflow-hidden relative z-10">
-                                <img
-                                    src={data.photo || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=2576&auto=format&fit=crop"}
-                                    alt={data.name}
-                                    className="w-full h-full object-cover grayscale contrast-110"
-                                />
+                <div className="flex flex-col lg:flex-row items-center lg:items-start relative z-10 h-full">
+
+                    {/* Left Sidebar - Profile Information */}
+                    <aside className="w-full lg:w-[240px] lg:sticky lg:top-6 text-center flex flex-col items-center self-start py-4">
+                        <div className="relative mb-6">
+                            {/* Decorative Top Diamond Line (Matching screenshot) */}
+                            <div className="flex items-center justify-center gap-4 mb-8">
+                                <div className="h-[1px] w-16 bg-primary/20"></div>
+                                <div className="w-2 h-2 bg-primary rotate-45 shadow-[0_0_8px_rgba(212,175,55,0.3)]"></div>
+                                <div className="h-[1px] w-16 bg-primary/20"></div>
                             </div>
-                            {/* Heart Icon Badge */}
-                            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-[#111111] p-1.5 rounded-full z-20">
-                                <div className="bg-primary text-dark w-8 h-8 flex items-center justify-center rounded-full text-sm">
-                                    <FontAwesomeIcon icon={faHeart} />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* Name */}
-                    <h1 className="text-6xl md:text-7xl font-serif text-white mb-3 tracking-tight lowercase">
-                        {data.name}
-                    </h1>
-
-                    {/* Dates */}
-                    <div className="flex items-center justify-center gap-3 text-primary font-bold text-xs tracking-[0.2em] uppercase mb-16">
-                        <span>{data.birthDate ? new Date(data.birthDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Unknown"}</span>
-                        <span className="text-[8px] opacity-50">●</span>
-                        <span>{data.passingDate ? new Date(data.passingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "Unknown"}</span>
-                    </div>
-
-                    {/* Quote */}
-                    <div className="relative max-w-xl mx-auto">
-                        <FontAwesomeIcon icon={faQuoteLeft} className="text-white/10 text-5xl absolute -top-8 -left-4" />
-                        <p className="text-white/60 font-serif italic text-lg leading-relaxed">
-                            "{t('memorial_page.in_loving_memory')}"
-                        </p>
-                    </div>
-
-                    {/* Animated Scroll Indicator */}
-                    <button
-                        onClick={() => document.getElementById('life-story')?.scrollIntoView({ behavior: 'smooth' })}
-                        className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 group transition-all duration-300 z-20"
-                        aria-label="Scroll down"
-                    >
-                        <div className="w-6 h-10 border-2 border-white/20 rounded-full flex justify-center p-1 group-hover:border-primary transition-colors">
-                            <div className="w-1.5 h-1.5 bg-white/60 rounded-full animate-scroll group-hover:bg-primary"></div>
-                        </div>
-                    </button>
-                </div>
-            </header>
-
-            {/* Life Story Section - Light/Cream Theme */}
-            <section id="life-story" className="py-32 bg-[#FAF9F6] relative">
-                {/* Decorative Icon Top */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-[#FAF9F6] rounded-full flex items-center justify-center border border-primary/20 text-primary text-xl shadow-sm">
-                    <FontAwesomeIcon icon={faBookOpen} />
-                </div>
-
-                <div className="container mx-auto px-6 max-w-4xl text-center">
-                    <h2 className="text-4xl md:text-5xl font-serif text-dark mb-16">
-                        {t('memorial_page.life_story_title')}
-                    </h2>
-
-                    <div className="space-y-8 text-gray-600 leading-loose font-serif text-lg md:text-xl font-light">
-                        <TranslatedText text={data.bio} isHtml={true} className="bio-content" />
-                        <p>
-                            {t('memorial_page.bio_p1', { firstName })}
-                        </p>
-                        <p>
-                            {t('memorial_page.bio_p2', { firstName })}
-                        </p>
-
-                        <div className="py-8 flex justify-center">
-                            <div className="w-24 h-[1px] bg-primary/40 relative">
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-primary"></div>
-                            </div>
-                        </div>
-
-                        <p>
-                            {t('memorial_page.bio_p3', { firstName })}
-                        </p>
-
-                        <div className="pt-12">
-                            <div className="inline-block px-12 py-6 bg-[#F4F1EA] rounded-sm border border-[#EAE5D5]">
-                                <p className="font-serif italic text-dark/70">
-                                    {t('memorial_page.bio_quote')}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* Photo Gallery - Polaroid Style */}
-            <section className="py-32 bg-[#EFEDE6] border-t border-[#E5E0D0] relative overflow-hidden">
-                {/* Header */}
-                <div className="text-center mb-20 relative z-10">
-                    <div className="w-16 h-16 bg-[#FDFCF8] rounded-full mx-auto flex items-center justify-center border border-primary/20 text-primary text-xl mb-6 shadow-sm">
-                        <FontAwesomeIcon icon={faImage} />
-                    </div>
-                    <h2 className="text-4xl md:text-5xl font-serif text-dark mb-4">{t('memorial_page.memories_title')}</h2>
-                    <p className="text-gray-500 font-sans text-sm tracking-wide uppercase">{t('memorial_page.memories_subtitle')}</p>
-                </div>
-
-                {/* Grid */}
-                <div className="container mx-auto px-6 max-w-6xl">
-                    {/* Show gallery if images exist. If demo, show placeholders. If real tribute and empty, show message. */}
-                    {
-                        (isDemo || (data.images && data.images.length > 0)) ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
-                                {(data.images && data.images.length > 0 ? data.images : (isDemo ? [
-                                    "https://images.unsplash.com/photo-1544299863-71a5c60205b3?q=80&w=2670&auto=format&fit=crop",
-                                    "https://images.unsplash.com/photo-1582239088698-c91726a97864?q=80&w=2670&auto=format&fit=crop",
-                                    "https://images.unsplash.com/photo-1511895426328-dc8714191300?q=80&w=2674&auto=format&fit=crop",
-                                    "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?q=80&w=2832&auto=format&fit=crop",
-                                    "https://images.unsplash.com/photo-1500353457223-288279bb2893?q=80&w=2670&auto=format&fit=crop",
-                                    "https://images.unsplash.com/photo-1516315609425-46aa1d5a7d7d?q=80&w=2667&auto=format&fit=crop",
-                                ] : [])).map((item, index) => {
-                                    const src = typeof item === 'object' ? item.url : item;
-                                    return (
-                                        <div key={index} className="bg-white p-3 pb-8 rounded shadow-sm hover:shadow-xl transition-all duration-500 transform hover:-translate-y-1 group relative">
-                                            {/* Gold corners */}
-                                            <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-primary/30 m-1"></div>
-                                            <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-primary/30 m-1"></div>
-                                            <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-primary/30 m-1"></div>
-                                            <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-primary/30 m-1"></div>
-
-                                            <div className="aspect-square bg-gray-100 overflow-hidden mb-4 grayscale group-hover:grayscale-0 transition-all duration-700">
-                                                <img src={src} alt={t('memorial_page.memory_item', { count: index + 1 })} className="w-full h-full object-cover" />
-                                            </div>
-                                            <p className="text-center font-sans text-xs text-gray-500 uppercase tracking-widest text-dark">
-                                                {isDemo ? [
-                                                    t('memorial_page.demo_photo_0'),
-                                                    t('memorial_page.demo_photo_1'),
-                                                    t('memorial_page.demo_photo_2'),
-                                                    t('memorial_page.demo_photo_3'),
-                                                    t('memorial_page.demo_photo_4'),
-                                                    t('memorial_page.demo_photo_5')
-                                                ][index] : t('memorial_page.memory_item', { count: index + 1 })}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className="text-center py-12 text-gray-400 italic">
-                                {t('memorial_page.no_photos')}
-                            </div>
-                        )
-                    }
-                </div>
-
-                <div className="mt-20 flex justify-center">
-                    <div className="bg-white px-8 py-4 rounded shadow-sm border border-gray-100 flex items-center gap-3">
-                        <span className="text-primary text-lg">♦</span>
-                        <span className="text-gray-500 text-sm uppercase tracking-widest">{t('memorial_page.photo_quote')}</span>
-                        <span className="text-primary text-lg">♦</span>
-                    </div>
-                </div>
-            </section>
-
-            {/* Video Section - "Bewegende Erinnerungen" */}
-            <section className="py-32 bg-[#F9F8F4] border-t border-[#E5E0D0] relative">
-                <div className="text-center mb-20">
-                    <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center border border-primary/20 text-primary text-xl mb-6 shadow-sm">
-                        <FontAwesomeIcon icon={faPlay} className="ml-1" />
-                    </div>
-                    <h2 className="text-4xl md:text-5xl font-serif text-dark mb-4">{t('memorial_page.videos_title')}</h2>
-                    <p className="text-gray-500 font-sans text-sm tracking-wide uppercase">{t('memorial_page.videos_subtitle')}</p>
-                </div>
-
-                <div className="container mx-auto px-6 max-w-6xl">
-                    {(isDemo || (data.videos && data.videos.length > 0) || (data.videoUrls && data.videoUrls.length > 0)) ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {/* YouTube / Embed Videos */}
-                            {data.videoUrls && data.videoUrls.map((url, index) => {
-                                let embedUrl = url;
-                                if (url.includes('youtube.com') || url.includes('youtu.be')) {
-                                    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-                                    const match = url.match(regExp);
-                                    if (match && match[2].length === 11) {
-                                        embedUrl = `https://www.youtube.com/embed/${match[2]}`;
-                                    }
-                                } else if (url.includes('vimeo.com')) {
-                                    const match = url.match(/vimeo.com\/(\d+)/);
-                                    if (match) {
-                                        embedUrl = `https://player.vimeo.com/video/${match[1]}`;
-                                    }
-                                }
-
-                                return (
-                                    <div key={`embed-${index}`} className="bg-white p-3 pb-6 rounded shadow-sm group relative">
-                                        <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-primary/30 m-1"></div>
-                                        <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-primary/30 m-1"></div>
-                                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-primary/30 m-1"></div>
-                                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-primary/30 m-1"></div>
-
-                                        <div className="relative aspect-video bg-black overflow-hidden group-hover:shadow-lg transition-all duration-500">
-                                            <iframe
-                                                src={embedUrl}
-                                                className="w-full h-full border-0"
-                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                allowFullScreen
-                                                title={`Video ${index}`}
-                                            ></iframe>
-                                        </div>
-                                        <div className="mt-4 px-2 flex justify-between items-center text-xs">
-                                            <span className="font-serif text-dark font-medium text-lg capitalize">
-                                                {url.includes('youtube') ? 'YouTube Video' : url.includes('vimeo') ? 'Vimeo Video' : 'Memorial Video'}
-                                            </span>
-                                            <span className="text-primary">♦</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-
-                            {/* Uploaded Videos */}
-                            {(data.videos && data.videos.length > 0 ? data.videos : (isDemo && (!data.videoUrls || data.videoUrls.length === 0) ? [
-                                "https://assets.mixkit.co/videos/preview/mixkit-family-walking-together-in-nature-39767-large.mp4",
-                                "https://assets.mixkit.co/videos/preview/mixkit-mother-with-her-little-daughter-eating-a-marshmallow-in-nature-39764-large.mp4",
-                                "https://assets.mixkit.co/videos/preview/mixkit-girl-in-neon-sign-1232-large.mp4"
-                            ] : [])).map((item, index) => {
-                                const src = typeof item === 'object' ? item.url : item;
-                                return (
-                                    <div key={index} className="bg-white p-3 pb-6 rounded shadow-sm group relative">
-                                        {/* Gold corners */}
-                                        <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-primary/30 m-1"></div>
-                                        <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-primary/30 m-1"></div>
-                                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-primary/30 m-1"></div>
-                                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-primary/30 m-1"></div>
-
-                                        <div className="relative aspect-video bg-black overflow-hidden group-hover:shadow-lg transition-all duration-500 cursor-pointer">
-                                            <video src={src} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" controls />
-                                        </div>
-                                        <div className="mt-4 px-2 flex justify-between items-center text-xs">
-                                            <span className="font-serif text-dark font-medium text-lg">
-                                                {isDemo ? [
-                                                    t('memorial_page.demo_video_0'),
-                                                    t('memorial_page.demo_video_1'),
-                                                    t('memorial_page.demo_video_2')
-                                                ][index] : t('memorial_page.video_item', { count: index + 1 })}
-                                            </span>
-                                            <span className="text-primary">♦</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <div className="text-center py-12 text-gray-400 italic">
-                            {t('memorial_page.no_videos')}
-                        </div>
-                    )}
-                </div>
-            </section>
-
-            {/* Tributes Section - "Worte aus dem Herzen" */}
-            <section className="py-32 bg-[#EFEDE6] border-t border-[#E5E0D0]">
-                <div className="text-center mb-20">
-                    <div className="w-16 h-16 bg-[#FDFCF8] rounded-full mx-auto flex items-center justify-center border border-primary/20 text-primary text-xl mb-6 shadow-sm">
-                        <FontAwesomeIcon icon={faQuoteLeft} />
-                    </div>
-                    <h2 className="text-4xl md:text-5xl font-serif text-dark mb-4">{t('memorial_page.tributes_title')}</h2>
-                    <p className="text-gray-500 font-sans text-sm tracking-wide uppercase">{t('memorial_page.tributes_subtitle')}</p>
-                </div>
-
-                <div className="container mx-auto px-6 max-w-5xl">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Display Comments */}
-                        {displayComments.map((tribute, index) => (
-                            <div key={index} className="bg-white p-8 rounded-lg shadow-sm border border-gray-100 hover:border-primary/30 transition-colors relative">
-                                <div className="absolute top-0 left-0 w-3 h-full border-l-2 border-primary/10"></div>
-
-                                <div className="flex items-start gap-4 mb-4">
-                                    <div className="w-10 h-10 border border-primary/30 rounded flex items-center justify-center text-primary/60 text-lg">
-                                        <FontAwesomeIcon icon={faPen} className="text-sm" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-dark font-serif">{tribute.name}</h4>
-                                        <p className="text-xs text-gray-400 uppercase tracking-widest">{tribute.date}</p>
+                            {/* Circular Profile Image with Gold Ring (Pixel Perfect) */}
+                            <div className="relative inline-block mb-6">
+                                <div className="w-56 h-56 rounded-full border-[1px] border-primary/20 p-1.5 flex items-center justify-center">
+                                    <div className="w-full h-full rounded-full border-[3px] border-white shadow-xl overflow-hidden relative z-10">
+                                        <div className="absolute inset-0 border border-primary/20 rounded-full z-20 pointer-events-none"></div>
+                                        <img
+                                            src={data.photo || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=2576&auto=format&fit=crop"}
+                                            alt={data.name}
+                                            className="w-full h-full object-cover grayscale brightness-105"
+                                        />
                                     </div>
                                 </div>
+                            </div>
 
-                                <div className="relative pl-2">
-                                    <FontAwesomeIcon icon={faQuoteLeft} className="absolute -top-1 -left-4 text-primary/10 text-xl" />
-                                    <p className="text-gray-600 font-serif leading-relaxed text-sm">
-                                        <TranslatedText text={tribute.text}></TranslatedText>
+                            {/* Name and Basic Info */}
+                            <div className="space-y-4">
+                                <h1 className="text-4xl md:text-5xl font-serif font-normal text-dark tracking-tight leading-[1.15]">
+                                    {data.name}
+                                </h1>
+                                <div className="flex items-center justify-center gap-4 py-6 w-full">
+                                    <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-[#D4AF37]/80"></div>
+                                    <p className="text-[9px] tracking-[0.2em] font-normal uppercase whitespace-nowrap text-[#D4AF37]">
+                                        {t('memorial_page.forever_in_memory', 'FOREVER IN MEMORY')}
                                     </p>
-                                    <div className="flex gap-1 justify-end mt-4 text-primary/40 text-[10px]">
-                                        <span>♦</span><span>♦</span><span>♦</span>
+                                    <div className="h-[1px] w-8 bg-gradient-to-l from-transparent via-[#D4AF37]/40 to-[#D4AF37]/80"></div>
+                                </div>
+                                <div className="text-gray-400 font-sans italic text-sm pt-2">
+                                    {data.birthDate ? new Date(data.birthDate).toLocaleDateString(i18n.language, { month: 'long', day: 'numeric', year: 'numeric' }) : "????"} – {data.passingDate ? new Date(data.passingDate).toLocaleDateString(i18n.language, { month: 'long', day: 'numeric', year: 'numeric' }) : "????"}
+                                </div>
+
+                                <div className="flex flex-col items-center py-6">
+                                    <div className="flex gap-3 mb-10">
+                                        <div className="w-1.5 h-1.5 bg-primary/30 rotate-45"></div>
+                                        <div className="w-2 h-2 bg-primary/60 rotate-45"></div>
+                                        <div className="w-1.5 h-1.5 bg-primary/30 rotate-45"></div>
+                                    </div>
+
+                                    <div className="flex flex-col items-center gap-1.5 cursor-pointer group" onClick={() => document.getElementById('life-story').scrollIntoView({ behavior: 'smooth' })}>
+                                        <span className="text-[8px] tracking-[0.5em] uppercase text-gray-300 font-normal mb-4 group-hover:text-primary transition-colors">Scroll</span>
+                                        <div className="w-[1px] h-16 bg-gradient-to-b from-primary/20 to-transparent group-hover:from-primary/40 transition-all"></div>
+                                    </div>
+                                </div>
+
+                                {/* Sidebar Navigation Menu */}
+                                <nav className="hidden lg:flex flex-col gap-6 text-center w-full mb-12">
+                                    <a href="#life-story" className="text-[10px] tracking-[0.2em] uppercase font-normal text-gray-400 hover:text-primary transition-all flex items-center justify-center gap-2">
+                                        <span className="w-1 h-1 bg-primary/20 rounded-full"></span>
+                                        {t('memorial_page.sidebar_life_story', 'Life Story')}
+                                    </a>
+                                    <a href="#photo-gallery" className="text-[10px] tracking-[0.2em] uppercase font-normal text-gray-400 hover:text-primary transition-all flex items-center justify-center gap-2">
+                                        <span className="w-1 h-1 bg-primary/20 rounded-full"></span>
+                                        {t('memorial_page.sidebar_memories', 'Memories')}
+                                    </a>
+                                    <a href="#video-section" className="text-[10px] tracking-[0.2em] uppercase font-normal text-gray-400 hover:text-primary transition-all flex items-center justify-center gap-2">
+                                        <span className="w-1 h-1 bg-primary/20 rounded-full"></span>
+                                        {t('memorial_page.sidebar_videos', 'Videos')}
+                                    </a>
+                                    <a href="#guestbook" className="text-[10px] tracking-[0.2em] uppercase font-normal text-gray-400 hover:text-primary transition-all flex items-center justify-center gap-2">
+                                        <span className="w-1 h-1 bg-primary/20 rounded-full"></span>
+                                        {t('memorial_page.sidebar_guestbook', 'Guestbook')}
+                                    </a>
+                                </nav>
+
+                                <button
+                                    onClick={() => setIsCondolenceModalOpen(true)}
+                                    className="bg-[#D4AF37] hover:bg-[#C4A027] text-white px-10 py-4 rounded-full text-[10px] font-normal tracking-[0.2em] uppercase transition-all duration-300 shadow-xl shadow-primary/20"
+                                >
+                                    {t('memorial_page.leave_message_button')}
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* Vertical Column Divider (Solid and constant as per request) */}
+                    <div className="hidden lg:block w-[1px] self-stretch mx-12 2xl:mx-16 bg-[#D4AF37]/30"></div>
+                    <div className="lg:hidden w-24 h-[1px] my-10 bg-[#D4AF37]/30"></div>
+
+                    {/* Main Content Area */}
+                    <main className="w-full flex-grow space-y-16 py-4">
+
+                        {/* Life Story Section */}
+                        <section id="life-story" className="text-center">
+                            <div className="flex flex-col items-center space-y-4">
+                                <div className="w-14 h-14 rounded-full border border-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37] bg-[#FDFCF8] shadow-sm relative mb-2">
+                                    <div className="absolute inset-[-4px] rounded-full border border-[#D4AF37]/5"></div>
+                                    <FontAwesomeIcon icon={faBookOpen} className="text-lg" />
+                                </div>
+                                <div className="w-48 h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/30 to-transparent mb-6"></div>
+                                <div className="space-y-6 max-w-2xl mx-auto">
+                                    <h2 className="text-3xl md:text-4xl font-serif font-normal text-dark tracking-tight uppercase px-4">
+                                        BIOGRAPHY
+                                    </h2>
+                                    <div className="prose prose-stone max-w-none text-gray-500 leading-[1.8] font-description text-[16px] md:text-[17px] font-light px-4 md:px-0">
+                                        <TranslatedText text={data.bio} isHtml={true} className="bio-content" />
                                     </div>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+                        </section>
 
-                    {/* CTA Box */}
-                    <div className="mt-20 max-w-2xl mx-auto bg-[#FDFCF8] p-10 text-center border border-primary/20 rounded shadow-sm">
-                        <h4 className="font-serif text-dark text-xl mb-6">{t('memorial_page.leave_message_title')}</h4>
-                        <button
-                            onClick={() => setIsCondolenceModalOpen(true)}
-                            className="bg-[#D4AF37] text-white px-8 py-3 rounded hover:bg-[#C4A027] transition-colors flex items-center justify-center gap-2 mx-auto shadow-lg shadow-primary/20"
-                        >
-                            <FontAwesomeIcon icon={faPen} className="text-sm" /> {t('memorial_page.leave_message_button')}
-                        </button>
-                    </div>
-                </div>
-            </section>
+                        {/* Photo Gallery */}
+                        <section id="photo-gallery" className="text-center">
+                            <div className="flex flex-col items-center space-y-4">
+                                <div className="w-14 h-14 rounded-full border border-primary/20 flex items-center justify-center text-primary/60 text-2xl bg-white shadow-sm">
+                                    <span className="font-serif -mt-1">✧</span>
+                                </div>
+                                <div className="space-y-4">
+                                    <h2 className="text-3xl md:text-4xl font-serif font-normal text-dark tracking-tight">
+                                        {t('memorial_page.memories_title')}
+                                    </h2>
+                                    <p className="text-[10px] text-gray-400 tracking-[0.25em] uppercase">
+                                        {t('memorial_page.memories_subtitle')}
+                                    </p>
+                                </div>
 
-            {/* Share Section - "Teilen Sie dieses Denkmal" */}
-            <section className="py-32 bg-[#FAF9F6] border-t border-[#E5E0D0] relative overflow-hidden">
-                {/* Background decorative faint lines if needed */}
 
-                <div className="container mx-auto px-6 max-w-4xl relative z-10">
-                    <div className="text-center mb-16">
-                        <div className="w-16 h-16 bg-[#FDFCF8] rounded-full mx-auto flex items-center justify-center border border-primary/20 text-primary text-xl mb-6 shadow-sm ring-4 ring-[#FAF9F6]">
-                            <FontAwesomeIcon icon={faShareNodes} />
-                        </div>
-                        <h2 className="text-4xl md:text-5xl font-serif text-dark mb-4">{t('memorial_page.share_title')}</h2>
-                        <p className="text-gray-500 font-sans text-sm tracking-wide uppercase">{t('memorial_page.share_subtitle')}</p>
-                    </div>
+                                {/* Photo Grid - Polaroid Style */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-5xl px-4">
+                                    {galleryImages.slice(0, showAllPhotos ? galleryImages.length : 4).map((item, index) => {
+                                        const src = typeof item === 'object' ? item.url : item;
+                                        return (
+                                            <div
+                                                key={index}
+                                                onClick={() => openLightbox(index)}
+                                                className="bg-white p-6 md:p-8 pb-8 shadow-[0_20px_60px_rgba(0,0,0,0.02)] relative group transition-all duration-500 hover:translate-y-[-8px] rounded-[2px] ring-1 ring-black/[0.01] cursor-pointer"
+                                            >
+                                                {/* Gold Corner Accents - More defined */}
+                                                <div className="absolute top-0 left-0 w-10 h-10 border-t-[1.5px] border-l-[1.5px] border-[#D4AF37]/40"></div>
+                                                <div className="absolute top-0 right-0 w-10 h-10 border-t-[1.5px] border-r-[1.5px] border-[#D4AF37]/40"></div>
+                                                <div className="absolute bottom-0 left-0 w-10 h-10 border-b-[1.5px] border-l-[1.5px] border-[#D4AF37]/40"></div>
+                                                <div className="absolute bottom-0 right-0 w-10 h-10 border-b-[1.5px] border-r-[1.5px] border-[#D4AF37]/40"></div>
 
-                    <div className="bg-white p-8 md:p-12 rounded shadow-lg border border-gray-100 flex flex-col md:flex-row gap-12 items-center relative">
-                        {/* Gold Corners for main box */}
-                        <div className="absolute top-0 left-0 w-8 h-8 border-t border-l border-primary/20 m-2"></div>
-                        <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-primary/20 m-2"></div>
-                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-primary/20 m-2"></div>
-                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b border-r border-primary/20 m-2"></div>
+                                                <div className="aspect-square bg-gray-50 overflow-hidden mb-4 shadow-inner">
+                                                    <img
+                                                        src={src}
+                                                        alt=""
+                                                        className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-110"
+                                                    />
+                                                </div>
 
-                        {/* Left: QR Code */}
-                        <div className="flex-shrink-0 text-center">
-                            <div className="w-48 h-48 bg-white p-2 border-2 border-primary/10 relative mx-auto mb-4 flex items-center justify-center">
-                                {/* Corner marks for QR */}
-                                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary/40 -m-1"></div>
-                                <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-primary/40 -m-1"></div>
-                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-primary/40 -m-1"></div>
-                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-primary/40 -m-1"></div>
+                                                <p className="text-center text-[13px] text-gray-500 font-sans tracking-[0.05em] font-medium">
+                                                    {isDemo ? [
+                                                        "Family Memories",
+                                                        "Vintage Family Gathering",
+                                                        "With Grandchildren",
+                                                        "Garden she loved"
+                                                    ][index] : `Memory ${index + 1}`}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
 
-                                <QRCodeCanvas
-                                    value={`${window.location.origin}/memorial/${data.slug || data.id || id || 'demo'}`}
-                                    size={160}
-                                    fgColor="#333333"
-                                />
-                            </div>
-                            <p className="text-xs text-gray-400">{t('memorial_page.scan_qr')}</p>
-                        </div>
-
-                        {/* Right: Link & Status */}
-                        <div className="flex-grow w-full space-y-6">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Memorial Link</label>
-                                <div className="flex gap-3">
-                                    <div className="flex-grow bg-gray-50 border border-gray-200 text-gray-600 px-4 py-3 rounded text-sm font-mono truncate select-all">
-                                        {`${window.location.origin}/memorial/${data.slug || data.id || id || 'eleanor-rose-mitchell'}`}
-                                    </div>
+                                {galleryImages.length > 4 && !showAllPhotos && (
                                     <button
-                                        onClick={copyToClipboard}
-                                        className="bg-[#D4AF37] text-white px-6 py-2 rounded hover:bg-[#C4A027] transition-colors text-sm font-medium flex items-center gap-2 whitespace-nowrap shadow-md shadow-primary/20"
+                                        onClick={() => setShowAllPhotos(true)}
+                                        className="flex items-center gap-4 text-[11px] tracking-[0.2em] text-[#D4AF37] font-normal uppercase hover:text-dark transition-colors pt-6"
                                     >
-                                        <FontAwesomeIcon icon={faCopy} /> {t('memorial_page.copy_button')}
+                                        <span>◄</span> {t('memorial_page.load_more', 'Load More Photos')} <span>►</span>
+                                    </button>
+                                )}
+
+                                <div className="flex items-center justify-center gap-6 w-full py-4">
+                                    <div className="h-[1px] flex-grow max-w-[120px] bg-gradient-to-r from-transparent to-[#D4AF37]/50"></div>
+                                    <div className="flex gap-3 text-[#D4AF37]/60 text-lg">
+                                        <span>♦</span><span>♦</span><span>♦</span><span>♦</span><span>♦</span>
+                                    </div>
+                                    <div className="h-[1px] flex-grow max-w-[120px] bg-gradient-to-l from-transparent to-[#D4AF37]/50"></div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Video Section */}
+                        <section id="video-section" className="text-center">
+                            <div className="flex flex-col items-center space-y-4">
+                                <div className="w-14 h-14 rounded-full border border-primary/20 flex items-center justify-center text-primary/60 text-xl bg-white shadow-sm">
+                                    <FontAwesomeIcon icon={faPlay} className="text-xs ml-0.5" />
+                                </div>
+                                <div className="space-y-4">
+                                    <h2 className="text-3xl md:text-4xl font-serif font-normal text-dark tracking-tight uppercase">
+                                        {t('memorial_page.videos_title')}
+                                    </h2>
+                                    <p className="text-[10px] text-gray-400 tracking-[0.25em] uppercase">
+                                        {t('memorial_page.videos_subtitle')}
+                                    </p>
+                                </div>
+
+                                {/* Video Grid - Consistent Sizing */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-5xl px-4">
+                                    {(allVideos.length > 0 ? allVideos : [
+                                        { type: 'url', url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+                                        { type: 'url', url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }
+                                    ]).slice(0, showAllVideos ? allVideos.length : 4).map((video, index) => {
+                                        const thumb = video.type === 'url' ? getYouTubeThumbnail(video.url) : null;
+                                        return (
+                                            <div 
+                                                key={index} 
+                                                onClick={() => openVideo(video)}
+                                                className="bg-white p-6 pb-8 shadow-[0_20px_60px_rgba(0,0,0,0.02)] relative group transition-all duration-500 hover:translate-y-[-8px] rounded-[2px] ring-1 ring-black/[0.01] cursor-pointer"
+                                            >
+                                                <div className="aspect-video bg-gray-50 overflow-hidden relative shadow-inner mb-4">
+                                                    <div className="absolute inset-0 bg-black/10 flex items-center justify-center z-10">
+                                                        <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-[#D4AF37] shadow-xl group-hover:scale-110 transition-transform">
+                                                            <FontAwesomeIcon icon={faPlay} className="ml-1 text-sm" />
+                                                        </div>
+                                                    </div>
+                                                    {video.type === 'file' ? (
+                                                        <video src={video.url} className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-110" />
+                                                    ) : (
+                                                        <img
+                                                            src={thumb || `https://images.unsplash.com/photo-1516280440614-37939bbdd4f1?q=80&w=2670&auto=format&fit=crop`}
+                                                            alt=""
+                                                            className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-110"
+                                                        />
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col items-center space-y-2">
+                                                    <p className="text-dark font-sans text-[14px] font-normal tracking-wide uppercase">
+                                                        {isDemo ? (index === 0 ? "Familienerinnerung" : "Einfach unvergesslich") : (video.title || `Video ${index + 1}`)}
+                                                    </p>
+                                                    <div className="w-2 h-2 bg-[#D4AF37]/40 rotate-45"></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {allVideos.length > 4 && !showAllVideos && (
+                                    <button 
+                                        onClick={() => setShowAllVideos(true)}
+                                        className="flex items-center gap-4 text-[11px] tracking-[0.2em] text-[#D4AF37] font-normal uppercase hover:text-dark transition-colors pt-6"
+                                    >
+                                        <span>◄</span> {t('memorial_page.view_all_videos', 'View All Videos')} <span>►</span>
+                                    </button>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* Guestbook Section */}
+                        <section id="guestbook" className="text-center">
+                            <div className="flex flex-col items-center space-y-6">
+                                <div className="w-14 h-14 rounded-full border border-primary/20 flex items-center justify-center text-primary/60 text-xl bg-white shadow-sm">
+                                    <FontAwesomeIcon icon={faPen} className="text-xs" />
+                                </div>
+                                <div className="space-y-4">
+                                    <h2 className="text-3xl md:text-4xl font-serif font-normal text-dark tracking-tight">
+                                        {t('memorial_page.tributes_title')}
+                                    </h2>
+                                    <p className="text-[10px] text-gray-400 tracking-[0.25em] uppercase text-center max-w-sm px-6 font-description">
+                                        {t('memorial_page.tributes_subtitle')}
+                                    </p>
+                                </div>
+
+                                {/* Carousel Navigation - Centered above cards, delicate and ivory */}
+                                <div className="flex gap-4 justify-center py-4 mb-2">
+                                    <button
+                                        onClick={() => setGuestbookIndex(prev => Math.max(0, prev - 1))}
+                                        disabled={guestbookIndex === 0}
+                                        className="w-12 h-12 rounded-full bg-white border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] hover:bg-[#D4AF37] hover:text-white transition-all disabled:opacity-20 shadow-sm"
+                                    >
+                                        <FontAwesomeIcon icon={faChevronLeft} className="text-base" />
+                                    </button>
+                                    <button
+                                        onClick={() => setGuestbookIndex(prev => Math.min(Math.max(0, displayComments.length - (isMobile ? 1 : 2)), prev + 1))}
+                                        disabled={guestbookIndex >= displayComments.length - (isMobile ? 1 : 2)}
+                                        className="w-12 h-12 rounded-full bg-white border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] hover:bg-[#D4AF37] hover:text-white transition-all disabled:opacity-20 shadow-sm"
+                                    >
+                                        <FontAwesomeIcon icon={faChevronRight} className="text-base" />
+                                    </button>
+                                </div>
+
+                                {/* Sliding Carousel Container - Force horizontal rectangle look */}
+                                <div className="w-full max-w-5xl px-4 overflow-hidden relative mx-auto">
+                                    <div
+                                        className="flex transition-all duration-700 ease-in-out gap-8"
+                                        style={{ transform: `translateX(-${guestbookIndex * (isMobile ? 100 : 50)}%)` }}
+                                    >
+                                        {displayComments.map((comment, index) => (
+                                            <div key={index} className="w-full md:w-[calc(50%-16px)] flex-shrink-0">
+                                                <div className="bg-white rounded-[35px] shadow-[0_25px_60px_rgba(0,0,0,0.03)] relative mt-12 p-6 md:p-8 md:p-10 flex flex-col text-left h-auto min-h-[250px] overflow-visible border border-gray-100/50">
+                                                    {/* Delicate Gold Frame - 4px stroke matching Sarah Mitchell reference */}
+                                                    <div className="absolute top-0 left-0 w-[65%] h-32 border-t-[4px] border-l-[4px] border-[#D4AF37] rounded-tl-[35px] z-10 pointer-events-none"></div>
+                                                    <div className="absolute top-0 right-0 w-[15%] h-[4px] bg-[#D4AF37] rounded-tr-[35px] z-10 pointer-events-none"></div>
+
+                                                    {/* Premium Avatar Layout: Perfect notch cutout that masks the gold border */}
+                                                    <div className="absolute -top-[30px] right-[10%] z-20">
+                                                        <div className="relative">
+                                                            {/* Background-matched Ivory halo - this creates the 'gap' in the gold bar */}
+                                                            <div className="absolute inset-[-6px] bg-[#FAF9F6] rounded-full"></div>
+                                                            {/* Gold Ring Avatar */}
+                                                            <div className="relative w-20 h-20 rounded-full bg-white border-[4px] border-[#D4AF37] shadow-xl overflow-hidden p-[2px]">
+                                                                <div className="w-full h-full rounded-full overflow-hidden bg-white flex items-center justify-center ring-[2px] ring-white ring-inset">
+                                                                    <img
+                                                                        src={comment.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.name)}&background=fdfcf8&color=d4af37&bold=true`}
+                                                                        alt=""
+                                                                        className="w-full h-full object-cover"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Card Header: Content positioning to match Sarah Mitchell */}
+                                                    <div className="flex items-start gap-4 mb-5 relative z-10 mt-2">
+                                                        <div className="w-10 h-10 flex-shrink-0 bg-[#FDFCF8] border border-[#D4AF37]/20 rounded flex items-center justify-center text-[#D4AF37] shadow-sm">
+                                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                                        </div>
+                                                        <div className="flex flex-col justify-center">
+                                                            <h4 className="font-normal text-dark text-[18.5px] tracking-tight leading-none mb-1.5">{comment.name}</h4>
+                                                            <p className="text-[10px] text-gray-400 font-sans tracking-[0.15em] uppercase font-medium">{comment.date || "January 20, 2026"}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Message Content: Compact & Airy with correct line height */}
+                                                    <div className="flex-grow relative z-10 px-0">
+                                                        <p className="text-gray-500 font-sans leading-[1.7] text-[15px] font-normal">
+                                                            {comment.text}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Footer: Bottom signature signature diamonds */}
+                                                    <div className="mt-8 pt-4 border-t border-gray-100 flex justify-end relative z-10">
+                                                        <div className="flex gap-2 text-[#D4AF37]/40">
+                                                            <div className="w-2 h-2 bg-current rotate-45"></div>
+                                                            <div className="w-2.5 h-2.5 bg-[#D4AF37]/70 rotate-45"></div>
+                                                            <div className="w-2 h-2 bg-current rotate-45"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Bottom CTA Box - Redesigned matching screenshot */}
+                                <div className="w-full max-w-3xl mx-auto bg-white/50 backdrop-blur-sm p-14 mt-10 text-center border border-[#D4AF37]/10 shadow-[0_30px_70px_rgba(0,0,0,0.03)] relative group rounded-[2px] ring-1 ring-[#D4AF37]/5">
+                                    <h4 className="text-dark font-serif font-normal text-xl md:text-2xl mb-10 tracking-tight leading-relaxed">
+                                        {t('memorial_page.leave_message_title', 'Share your memories and condolences')}
+                                    </h4>
+                                    <button
+                                        onClick={() => setIsCondolenceModalOpen(true)}
+                                        className="bg-[#D4AF37] hover:bg-[#C4A027] text-white px-12 py-5 rounded-sm text-[11px] font-normal tracking-[0.25em] uppercase transition-all duration-500 shadow-2xl shadow-[#D4AF37]/30 flex items-center gap-4 mx-auto hover:scale-[1.02]"
+                                    >
+                                        <FontAwesomeIcon icon={faPen} className="text-xs" />
+                                        {t('memorial_page.leave_message_button', 'Leave a Message')}
                                     </button>
                                 </div>
                             </div>
+                        </section>
 
-                            <div className="border border-gray-100 rounded p-4 flex items-center gap-4 bg-gray-50/50">
-                                <div className="w-10 h-10 border border-primary/30 rounded flex items-center justify-center text-primary/60 bg-white flex-shrink-0">
-                                    <FontAwesomeIcon icon={faGlobe} />
+                        {/* Share Section */}
+                        <section className="text-center">
+                            <div className="flex flex-col items-center space-y-12">
+                                <div className="w-14 h-14 rounded-full border border-primary/20 flex items-center justify-center text-primary/60 text-xl bg-white shadow-sm">
+                                    <FontAwesomeIcon icon={faShareNodes} className="text-sm" />
                                 </div>
-                                <div>
-                                    <h4 className="font-bold text-dark text-sm">{t('memorial_page.public_memorial')}</h4>
-                                    <p className="text-xs text-gray-400">{t('memorial_page.public_desc')}</p>
+                                <div className="space-y-4">
+                                    <h2 className="text-3xl md:text-4xl font-serif font-normal text-dark tracking-tight">
+                                        {t('memorial_page.share_title')}
+                                    </h2>
+                                    <p className="text-[10px] text-gray-400 tracking-[0.25em] uppercase text-center max-w-sm px-6 font-description">
+                                        {t('memorial_page.share_subtitle')}
+                                    </p>
+                                </div>
+
+                                <div className="bg-white p-6 md:p-12 shadow-xl border border-black/[0.02] flex flex-col md:flex-row gap-10 md:gap-16 items-center w-full max-w-4xl ring-1 ring-black/[0.03]">
+                                    <div className="flex-shrink-0 relative">
+                                        <div className="w-44 h-44 bg-white p-3 border border-primary/10 shadow-inner">
+                                            <QRCodeCanvas
+                                                value={`${window.location.origin}/memorial/${data.slug || id}`}
+                                                size={152}
+                                                fgColor="#333333"
+                                            />
+                                        </div>
+                                        <p className="text-[9px] text-gray-400 mt-5 text-center uppercase tracking-[0.2em] font-medium">{t('memorial_page.scan_qr')}</p>
+                                    </div>
+
+                                    <div className="flex-grow w-full space-y-10 text-left">
+                                        <div className="space-y-4">
+                                            <h4 className="text-[10px] font-normal text-dark/70 uppercase tracking-[0.2em]">Memorial Link</h4>
+                                            <div className="flex flex-col sm:flex-row gap-2 p-1.5 bg-gray-50 border border-gray-100 rounded">
+                                                <input
+                                                    readOnly
+                                                    value={`${window.location.origin}/memorial/${data.slug || id}`}
+                                                    className="flex-grow bg-transparent text-gray-400 px-4 py-3 sm:py-2 text-[10px] font-mono select-all outline-none"
+                                                />
+                                                <button
+                                                    onClick={copyToClipboard}
+                                                    className="bg-[#D4AF37] text-white px-6 py-3 sm:py-2 rounded text-[10px] font-normal uppercase tracking-widest hover:bg-[#C4A027] transition-all"
+                                                >
+                                                    {t('memorial_page.copy_button', 'Copy')}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 py-6 px-8 bg-gray-50/50 border border-gray-100/50">
+                                            <div className="w-10 h-10 rounded-full border border-primary/20 flex items-center justify-center text-primary/40 bg-white">
+                                                <FontAwesomeIcon icon={faLockOpen} className="text-xs" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[11px] font-normal text-dark uppercase tracking-widest">{t('memorial_page.public_memorial')}</p>
+                                                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest leading-relaxed">{t('memorial_page.public_desc')}</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-gray-300 italic font-description leading-relaxed text-center md:text-left">
+                                            {t('memorial_page.share_footer')}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-center gap-6 w-full py-4">
+                                    <div className="h-[1px] flex-grow max-w-[120px] bg-gradient-to-r from-transparent to-[#D4AF37]/50"></div>
+                                    <div className="flex gap-3 text-[#D4AF37]/60 text-lg">
+                                        <span>♦</span><span>♦</span><span>♦</span><span>♦</span><span>♦</span>
+                                    </div>
+                                    <div className="h-[1px] flex-grow max-w-[120px] bg-gradient-to-l from-transparent to-[#D4AF37]/50"></div>
                                 </div>
                             </div>
+                        </section>
 
-                            <p className="text-xs text-gray-400 text-left">{t('memorial_page.share_footer')}</p>
-                        </div>
-                    </div>
-                </div>
-
-            </section>
-
-            {/* Closing / In Memory Section */}
-            <section className="py-32 bg-[#FAF9F6] text-center overflow-hidden">
-                <div className="container mx-auto px-6 max-w-3xl relative">
-                    {/* Top Icon */}
-                    <div className="mb-12 relative inline-block">
-                        <div className="w-16 h-16 rounded-full border border-primary/30 flex items-center justify-center mx-auto text-primary text-2xl bg-white shadow-sm">
-                            <span className="font-serif">✧</span>
-                        </div>
-                        {/* Sparkles around if needed */}
-                        <span className="absolute -top-2 -right-2 text-primary/40 text-sm">✦</span>
-                    </div>
-
-                    <h3 className="text-3xl md:text-4xl font-serif text-dark leading-snug mb-8">
-                        {t('memorial_page.closing_quote')}
-                    </h3>
-
-                    <div className="flex justify-center gap-2 text-primary/40 text-xs mb-8">
-                        <span>♦</span><span>♦</span><span>♦</span>
-                    </div>
-
-                    <p className="text-gray-500 font-serif leading-loose text-lg mb-20 max-w-2xl mx-auto">
-                        {t('memorial_page.closing_tribute', { firstName })}
-                    </p>
-
-                    {/* Final Memorial Box */}
-                    <div className="relative inline-block py-12">
-                        {/* Vertical Line */}
-                        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-12 w-[1px] bg-primary/20"></div>
-
-                        <div className="border border-primary/30 px-12 py-6 bg-white shadow-sm relative">
-                            {/* Gold Corners */}
-                            <div className="absolute top-0 left-0 w-3 h-3 border-t border-l border-primary/60 -m-[1px]"></div>
-                            <div className="absolute top-0 right-0 w-3 h-3 border-t border-r border-primary/60 -m-[1px]"></div>
-                            <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-primary/60 -m-[1px]"></div>
-                            <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-primary/60 -m-[1px]"></div>
-
-                            <p className="text-xs uppercase tracking-[0.2em] text-gray-500 font-medium">{t('memorial_page.in_loving_memory')}</p>
-
-                            {/* Decorative logic center */}
-                            <div className="flex items-center justify-center gap-4 mt-4">
-                                <div className="h-[1px] w-8 bg-primary/30"></div>
-                                <div className="w-2 h-2 bg-primary rotate-45"></div>
-                                <div className="h-[1px] w-8 bg-primary/30"></div>
+                        {/* Final Quote & Closing */}
+                        <section className="text-center space-y-10 pt-8 pb-20">
+                            <div className="space-y-6">
+                                <div className="text-[#D4AF37] text-3xl font-serif">✧</div>
+                                <h3 className="text-3xl md:text-4xl font-serif text-dark leading-relaxed italic max-w-2xl mx-auto font-light">
+                                    "{t('memorial_page.closing_quote')}"
+                                </h3>
+                                <div className="flex items-center justify-center gap-6 w-full py-8">
+                                    <div className="h-[1px] flex-grow max-w-[80px] bg-gradient-to-r from-transparent to-[#D4AF37]/40"></div>
+                                    <div className="flex gap-3 text-[#D4AF37]/50 text-base">
+                                        <span>♦</span><span>♦</span><span>♦</span>
+                                    </div>
+                                    <div className="h-[1px] flex-grow max-w-[80px] bg-gradient-to-l from-transparent to-[#D4AF37]/40"></div>
+                                </div>
+                                <p className="text-gray-400 font-description leading-[1.8] text-lg font-light max-w-xl mx-auto italic px-6">
+                                    {t('memorial_page.closing_tribute', { firstName })}
+                                </p>
                             </div>
-                        </div>
 
-                        {/* Bottom Diamonds */}
-                        <div className="flex justify-center gap-2 text-primary/20 text-[10px] mt-8">
-                            <span>♦</span><span>♦</span><span>♦</span>
-                        </div>
-                    </div>
+
+                        </section>
+
+                    </main>
                 </div>
+            </div>
 
-                {/* Footer Area */}
-                <div className="mt-20 pt-12 border-t border-primary/5">
-                    <p className="text-gray-400 text-sm mb-2">{t('memorial_page.created_by')} <span className="text-[#D4AF37] font-medium">Tributto</span></p>
-                    <p className="text-gray-300 text-xs">{t('memorial_page.tagline')}</p>
-
-                    <div className="mt-8">
-                        <div className="w-10 h-10 border border-primary/20 mx-auto flex items-center justify-center text-primary/40 text-xs bg-white shadow-sm">
-                            <span>♦</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-
-            {/* Condolence Book Modal */}
+            {/* Condolence Book Modal (Updated to match request) */}
             {
                 isCondolenceModalOpen && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-                        <div className="bg-white rounded-lg shadow-2xl w-full max-w-md relative animate-slideUp">
-                            {/* Close Button */}
-                            <button
-                                onClick={() => setIsCondolenceModalOpen(false)}
-                                className="absolute top-4 right-4 text-gray-400 hover:text-dark transition-colors"
-                            >
-                                <FontAwesomeIcon icon={faTimes} className="text-xl" />
-                            </button>
+                        <div className="bg-white rounded shadow-2xl w-full max-w-xl relative animate-slideUp max-h-[90vh] flex flex-col">
+                            <div className="absolute top-0 right-1 p-4 z-20">
+                                <button
+                                    onClick={() => setIsCondolenceModalOpen(false)}
+                                    className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-dark transition-colors bg-white/80 backdrop-blur-sm rounded-full shadow-sm"
+                                >
+                                    <FontAwesomeIcon icon={faTimes} className="text-xl" />
+                                </button>
+                            </div>
 
-                            <div className="p-8">
-                                {/* Icon Header */}
-                                <div className="text-center mb-6">
-                                    <div className="w-16 h-16 rounded-full border border-[#D4AF37] flex items-center justify-center mx-auto mb-4">
-                                        <div className="w-12 h-12 bg-[#D4AF37] rounded-full flex items-center justify-center text-white text-xl">
-                                            <FontAwesomeIcon icon={faBookOpen} />
+                            <div className="p-10 md:p-14 overflow-y-auto custom-scrollbar flex-grow">
+                                <form onSubmit={handleCondolenceSubmit} className="space-y-8">
+                                    {/* Upload Section */}
+                                    <div className="space-y-4">
+                                        <label className="text-[13px] font-medium text-gray-400">Upload images</label>
+
+                                        <input
+                                            type="file"
+                                            multiple
+                                            accept="image/*"
+                                            className="hidden"
+                                            ref={fileInputRef}
+                                            onChange={handleFileChange}
+                                        />
+
+                                        <div
+                                            onClick={() => fileInputRef.current.click()}
+                                            className="w-full aspect-[2.5/1] border border-dashed border-gray-200 rounded flex flex-col items-center justify-center group cursor-pointer hover:border-primary/40 transition-colors bg-gray-50/30"
+                                        >
+                                            <div className="w-12 h-12 rounded-lg border-2 border-primary/20 flex items-center justify-center text-primary group-hover:scale-110 transition-transform bg-white shadow-sm">
+                                                <FontAwesomeIcon icon={faUpload} className="text-xl" />
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 mt-3 font-medium tracking-wider uppercase">{t('memorial_page.click_to_upload', 'Click to Upload')}</p>
+                                        </div>
+
+                                        {/* Image Previews */}
+                                        {selectedImages.length > 0 && (
+                                            <div className="flex flex-wrap gap-3 pt-2">
+                                                {selectedImages.map((img, idx) => (
+                                                    <div key={idx} className="relative w-16 h-16 rounded overflow-hidden border border-gray-100 group">
+                                                        <img src={img.preview} alt="" className="w-full h-full object-cover" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeImage(idx)}
+                                                            className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        >
+                                                            <FontAwesomeIcon icon={faTimes} className="text-xs" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Form Fields */}
+                                    <div className="space-y-6">
+                                        <div className="space-y-1">
+                                            <label className="text-[13px] font-medium text-dark">Name</label>
+                                            <input
+                                                type="text"
+                                                value={condolenceForm.name}
+                                                onChange={(e) => setCondolenceForm(prev => ({ ...prev, name: e.target.value }))}
+                                                className="w-full border-b border-gray-200 py-2 outline-none focus:border-primary transition-colors text-sm text-gray-600"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[13px] font-medium text-dark">Email</label>
+                                            <input
+                                                type="email"
+                                                value={condolenceForm.email}
+                                                onChange={(e) => setCondolenceForm(prev => ({ ...prev, email: e.target.value }))}
+                                                className="w-full border-b border-gray-200 py-2 outline-none focus:border-primary transition-colors text-sm text-gray-600"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[13px] font-medium text-dark">Your comment</label>
+                                            <textarea
+                                                value={condolenceForm.comment}
+                                                onChange={(e) => setCondolenceForm(prev => ({ ...prev, comment: e.target.value }))}
+                                                placeholder="Enter memory"
+                                                rows="4"
+                                                className="w-full border-b border-gray-200 py-2 outline-none focus:border-primary transition-colors text-sm text-gray-600 resize-none placeholder:text-gray-300"
+                                                required
+                                            ></textarea>
                                         </div>
                                     </div>
-                                    <h3 className="text-xl font-bold text-dark uppercase tracking-wide">{t('memorial_page.condolence_book')}</h3>
-                                </div>
 
-                                <form onSubmit={handleCondolenceSubmit} className="space-y-6">
-                                    <div>
-                                        <input
-                                            type="text"
-                                            placeholder={t('memorial_page.your_name')}
-                                            value={condolenceForm.name}
-                                            onChange={(e) => setCondolenceForm(prev => ({ ...prev, name: e.target.value }))}
-                                            className="w-full border-b border-gray-300 py-2 outline-none focus:border-[#D4AF37] transition-colors text-gray-700 placeholder-gray-400 font-light"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <textarea
-                                            placeholder={t('memorial_page.your_message')}
-                                            value={condolenceForm.comment}
-                                            onChange={(e) => setCondolenceForm(prev => ({ ...prev, comment: e.target.value }))}
-                                            rows="5"
-                                            className="w-full border-b border-gray-300 py-2 outline-none focus:border-[#D4AF37] transition-colors text-gray-700 placeholder-gray-400 font-light resize-none"
-                                            required
-                                        ></textarea>
+                                    {/* Checkbox */}
+                                    <div className="flex items-start gap-3">
+                                        <div className="relative flex items-center">
+                                            <input
+                                                type="checkbox"
+                                                id="save-details"
+                                                checked={condolenceForm.saveDetails}
+                                                onChange={(e) => setCondolenceForm(prev => ({ ...prev, saveDetails: e.target.checked }))}
+                                                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary accent-primary"
+                                            />
+                                        </div>
+                                        <label htmlFor="save-details" className="text-[12px] text-gray-500 leading-tight">
+                                            Save my name, email, and website in this browser for the next time I add a reminder
+                                        </label>
                                     </div>
 
                                     <button
                                         type="submit"
-                                        className="w-full bg-[#D4AF37] text-white font-bold py-3 rounded uppercase tracking-wide hover:bg-[#C4A027] transition-colors shadow-md"
+                                        className="w-full bg-[#D4AF37] hover:bg-[#C4A027] text-white font-bold py-4 rounded text-[13px] uppercase tracking-widest transition-all duration-300 mt-4"
                                     >
-                                        {t('memorial_page.add_button')}
+                                        ADD COMMENT
                                     </button>
                                 </form>
                             </div>
@@ -652,7 +815,120 @@ const MemorialPage = () => {
                     </div>
                 )
             }
-        </div>
+
+            {/* Image Lightbox Modal */}
+            {lightbox.isOpen && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-fadeIn"
+                    onClick={closeLightbox}
+                >
+                    <button
+                        className="absolute top-8 right-8 text-white/60 hover:text-white transition-colors z-[110]"
+                        onClick={closeLightbox}
+                    >
+                        <FontAwesomeIcon icon={faTimes} className="text-3xl" />
+                    </button>
+
+                    {/* Navigation Buttons */}
+                    <button
+                        className="absolute left-4 md:left-8 w-14 h-14 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all z-[110] border border-white/10"
+                        onClick={prevImage}
+                    >
+                        <FontAwesomeIcon icon={faChevronLeft} className="text-xl" />
+                    </button>
+
+                    <button
+                        className="absolute right-4 md:right-8 w-14 h-14 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-all z-[110] border border-white/10"
+                        onClick={nextImage}
+                    >
+                        <FontAwesomeIcon icon={faChevronRight} className="text-xl" />
+                    </button>
+
+                    {/* Image Container */}
+                    <div className="max-w-[85vw] max-h-[85vh] relative flex flex-col items-center">
+                        <img
+                            src={typeof galleryImages[lightbox.index] === 'object' ? galleryImages[lightbox.index].url : galleryImages[lightbox.index]}
+                            alt=""
+                            className="max-w-full max-h-[80vh] object-contain shadow-2xl animate-scaleIn rounded-sm"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="mt-8 text-center text-white/80 font-serif italic tracking-wide animate-slideUp">
+                            {isDemo ? [
+                                "Family Memories",
+                                "Vintage Family Gathering",
+                                "With Grandchildren",
+                                "Garden she loved"
+                            ][lightbox.index] : `Memory ${lightbox.index + 1}`}
+                        </div>
+                        <div className="mt-4 text-[10px] uppercase tracking-[0.3em] text-white/40 font-bold">
+                            {lightbox.index + 1} / {galleryImages.length}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Video Modal */}
+            {videoModal.isOpen && (
+                <div 
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-fadeIn"
+                    onClick={() => setVideoModal({ isOpen: false, url: '', type: 'url' })}
+                >
+                    <button 
+                        className="absolute top-8 right-8 text-white/60 hover:text-white transition-colors z-[110]"
+                        onClick={() => setVideoModal({ isOpen: false, url: '', type: 'url' })}
+                    >
+                        <FontAwesomeIcon icon={faTimes} className="text-3xl" />
+                    </button>
+
+                    <div className="w-full max-w-5xl aspect-video relative mx-4 animate-scaleIn" onClick={e => e.stopPropagation()}>
+                        {videoModal.type === 'file' ? (
+                            <video 
+                                src={videoModal.url} 
+                                controls 
+                                autoPlay 
+                                className="w-full h-full rounded shadow-2xl"
+                            />
+                        ) : (
+                            <iframe
+                                src={videoModal.url}
+                                title="Video Player"
+                                className="w-full h-full rounded shadow-2xl"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                            ></iframe>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Styles for bio and prose */}
+            <style dangerouslySetInnerHTML={{
+                __html: `
+                .bio-content p { margin-bottom: 2rem; }
+                .bio-content p:last-child { margin-bottom: 0; }
+                @keyframes slideUp {
+                    from { transform: translateY(30px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+                @keyframes scaleIn {
+                    from { transform: scale(0.95); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
+                .animate-slideUp {
+                    animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+                .animate-scaleIn {
+                    animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+                .animate-fadeIn {
+                    animation: fadeIn 0.4s ease-out forwards;
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+            ` }} />
+        </div >
     );
 };
 

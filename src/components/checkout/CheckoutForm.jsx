@@ -69,7 +69,7 @@ const CheckoutForm = ({ amount, onSuccess }) => {
             }
             setIsSuccess(false);
         } else if (paymentIntent && paymentIntent.status === "succeeded") {
-            setMessage("Payment succeeded! Your voucher will be emailed to you shortly.");
+            setMessage("Payment succeeded! Your order is being processed.");
             setIsSuccess(true);
             onSuccess(paymentIntent);
         } else {

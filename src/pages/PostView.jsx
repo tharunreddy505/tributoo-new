@@ -57,6 +57,15 @@ const ContentPart = ({ html, className, isVisualBuilder }) => {
     return <div className={className} dangerouslySetInnerHTML={{ __html: finalHtml }} />;
 };
 
+// Returns manually-entered translation if available, otherwise falls back to English
+const getTranslated = (item, field, lang) => {
+    if (!item) return '';
+    if (lang && lang !== 'en' && item.translations?.[lang]?.[field]) {
+        return item.translations[lang][field];
+    }
+    return item[field] || '';
+};
+
 const PostView = () => {
     const { slug } = useParams();
     const { posts, isInitialized } = useTributeContext();
@@ -150,7 +159,7 @@ const PostView = () => {
                             </div>
                         )}
                         <h1 className="text-4xl md:text-5xl font-serif text-dark mb-4 leading-tight">
-                            <TranslatedText text={post.title} />
+                            {getTranslated(post, 'title', i18n.language)}
                         </h1>
                         {post.tags && post.tags.length > 0 && (
                             <div className="flex justify-center gap-2 mt-4 flex-wrap">
@@ -164,7 +173,7 @@ const PostView = () => {
                     <div className="w-full">
                         <ContentPart
                             className={contentClasses}
-                            html={post.content}
+                            html={getTranslated(post, 'content', i18n.language)}
                             isVisualBuilder={isVisualBuilder}
                         />
                     </div>

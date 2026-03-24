@@ -108,7 +108,7 @@
         "questions": {
             "q1": {
                 "q": "Quanto durerà la pagina commemorativa?",
-                "a": "La tua pagina commemorativa è preservata a tempo indeterminato. Ci impegniamo a mantenere i tuoi ricordi al sicuro per le generazioni future."
+                "a": "Le pagine commemorative con il piano gratuito sono disponibili per 10 anni. I memoriali Premium rimangono conservati a tempo indeterminato, garantendo che i ricordi siano al sicuro per le generazioni future."
             },
             "q2": {
                 "q": "Posso controllare chi vede la pagina commemorativa?",
@@ -198,6 +198,10 @@
         "no_videos": "Nessun video caricato ancora.",
         "tributes_title": "Parole dal cuore",
         "tributes_subtitle": "Lettere d'amore da coloro le cui vite hanno toccato con grazia.",
+        "view_all_photos": "VISUALIZZA TUTTE LE FOTO",
+        "load_more": "CARICA ALTRE FOTO",
+        "forever_in_memory": "PER SEMPRE NEL RICORDO",
+        "click_to_upload": "Clicca per caricare",
         "leave_message_title": "Condividi i tuoi ricordi e condoglianze",
         "leave_message_button": "Lascia un messaggio",
         "share_title": "Condividi questo memoriale",
@@ -276,25 +280,39 @@
         "title_line2": "trasparenti",
         "description": "Scegli il piano giusto per onorare la memoria del tuo caro.",
         "free": {
-            "title": "Pacchetto Gratuito",
-            "price": "0",
-            "period": "Gratis per sempre",
+            "title": "Gratuito",
+            "price": "0.00",
+            "period": "10 anni",
             "features": [
-                "Pagina commemorativa online",
-                "Foto limitate (5 immagini)",
-                "1 amministratore"
+                "Pagina commemorativa (pubblica)",
+                "Informazioni personali e biografia",
+                "Foto profilo / sfondo",
+                "Link con codice QR",
+                "Ricordi (testo e 1 foto)",
+                "Libro delle condoglianze",
+                "Galleria fotografica (max 10)",
+                "Informazioni sulla posizione",
+                "Link ai social network"
             ],
             "button": "Inizia Gratis"
         },
         "premium": {
-            "title": "Pacchetto Premium",
-            "price": "99",
-            "period": "Pagamento unico",
+            "title": "Premium",
+            "price": "58.00",
+            "period": "a vita",
             "features": [
-                "Targa QR fisica",
-                "Media illimitati",
-                "Amministratori multipli",
-                "Disponibilità a vita"
+                "Pagina commemorativa (pubblica o privata)",
+                "Persona di fiducia",
+                "Informazioni personali e biografia",
+                "Foto profilo / sfondo",
+                "Link con codice QR",
+                "Ricordi (testo e foto)",
+                "Promemoria (data di nascita / morte)",
+                "Libro delle condoglianze",
+                "Galleria foto, video e audio (illimitata)",
+                "Informazioni sulla posizione",
+                "Link ai social network",
+                "Documenti (PDF, Word)"
             ],
             "button": "Passa a Premium",
             "popular": "Più Popolare"
@@ -302,7 +320,7 @@
         "corporate": {
             "title": "Pacchetto Corporate",
             "price": "Personalizzato",
-            "period": "Prezzi da definire",
+            "period": "a vita",
             "features": [
                 "Dashboard aziendale",
                 "Pagine commemorative multiple",

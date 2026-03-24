@@ -108,7 +108,7 @@
         "questions": {
             "q1": {
                 "q": "How long will the memorial page last?",
-                "a": "Your memorial page is preserved indefinitely. We are committed to keeping your memories safe for generations to come."
+                "a": "Memorial pages on the Free plan are available for 10 years. Premium memorials remain preserved indefinitely, ensuring memories are safe for generations to come."
             },
             "q2": {
                 "q": "Can I control who sees the memorial page?",
@@ -191,6 +191,8 @@
         "life_story_title": "A Life Beautifully Lived",
         "memories_title": "Precious Memories",
         "memories_subtitle": "Moments frozen in time",
+        "view_all_photos": "View all photos",
+        "load_more": "Load More Photos",
         "no_photos": "No photos uploaded yet.",
         "photo_quote": "Every photo tells a story of love",
         "videos_title": "Moving Memories",
@@ -208,6 +210,8 @@
         "public_memorial": "This Memorial is Public",
         "public_desc": "Anyone with the link can view",
         "share_footer": "Share this page to honor their beautiful life.",
+        "forever_in_memory": "FOREVER IN MEMORY",
+        "click_to_upload": "Click to Upload",
         "in_loving_memory": "In Loving Memory",
         "created_with_love": "Created with love by",
         "honoring_lives": "Honoring lives, preserving memories",
@@ -276,25 +280,39 @@
         "title_line2": "pricing",
         "description": "Choose the right plan to honor your loved one's memory.",
         "free": {
-            "title": "Free Package",
-            "price": "0",
-            "period": "Free forever",
+            "title": "Free",
+            "price": "0.00",
+            "period": "10 years",
             "features": [
-                "Online memorial page",
-                "Limited photos (5 images)",
-                "1 administrator"
+                "Memorial page (public)",
+                "Personal information and biography",
+                "Profile / Background picture",
+                "Link with QR Code",
+                "Memories (text and 1 photo)",
+                "Book of condolences",
+                "Photo gallery (max 10)",
+                "Location information",
+                "Links social networks"
             ],
             "button": "Start for Free"
         },
         "premium": {
-            "title": "Premium Package",
-            "price": "99",
-            "period": "One-time payment",
+            "title": "Premium",
+            "price": "58.00",
+            "period": "lifetime",
             "features": [
-                "Physical QR plaque",
-                "Unlimited media",
-                "Multiple administrators",
-                "Lifetime availability"
+                "Memorial page (public or private)",
+                "Person of trust",
+                "Personal information and biography",
+                "Profile / Background picture",
+                "Link with QR Code",
+                "Memories (text and photos)",
+                "Reminder (date of birth / death)",
+                "Book of condolences",
+                "Photo- / Video and Audio gallery (unlimited)",
+                "Location information",
+                "Links social networks",
+                "Documents (pdf, word)"
             ],
             "button": "Go Premium",
             "popular": "Most Popular"
@@ -302,7 +320,7 @@
         "corporate": {
             "title": "Corporate Package",
             "price": "Custom",
-            "period": "TBD pricing",
+            "period": "lifetime",
             "features": [
                 "Corporate dashboard",
                 "Multiple memorial pages",

@@ -9,7 +9,9 @@
     "start": "node server/index.js",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "bash deploy.sh",
+    "deploy:frontend": "npm run build && node scripts/deploy_frontend.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1000.0",
@@ -19,6 +21,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fortawesome/free-solid-svg-icons": "^7.1.0",
     "@fortawesome/react-fontawesome": "^3.2.0",
+    "@react-google-maps/api": "^2.20.8",
     "@stripe/react-stripe-js": "^5.6.0",
     "@stripe/stripe-js": "^8.7.0",
     "@tinymce/tinymce-react": "^6.3.0",

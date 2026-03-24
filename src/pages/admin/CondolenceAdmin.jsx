@@ -12,19 +12,39 @@ const CondolenceAdmin = () => {
     // Manual add/edit state
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
-    const [newMsg, setNewMsg] = useState({ tributeId: '', name: '', content: '' });
+    const [newMsg, setNewMsg] = useState({ tributeId: '', name: '', email: '', content: '', image: null });
     const [editingComment, setEditingComment] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Current user info
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const isAdmin = currentUser.role === 'admin' || currentUser.username === 'admin' || currentUser.email?.includes('admin');
+
+    // Only the current user's memorial IDs (for filtering)
+    const myTributeIds = tributes
+        .filter(t => String(t.userId || t.user_id) === String(currentUser.id))
+        .map(t => String(t.id));
+
+    // Tributes to show in the Add dropdown — admins see all, users see only their own
+    const selectableTributes = isAdmin
+        ? tributes
+        : tributes.filter(t => String(t.userId || t.user_id) === String(currentUser.id));
 
     const loadComments = async () => {
         setLoading(true);
         const data = await fetchComments();
-        setComments(data);
+        // Non-admins: only show condolences for their own memorials
+        if (isAdmin) {
+            setComments(data);
+        } else {
+            setComments(data.filter(c => myTributeIds.includes(String(c.tribute_id))));
+        }
         setLoading(false);
     };
 
     useEffect(() => {
         loadComments();
-    }, []);
+    }, [tributes]);
 
     const handleDelete = async (id) => {
         showAlert("Are you sure you want to delete this condolence message? This action is permanent.", "error", "Confirm Delete", async () => {
@@ -45,16 +65,22 @@ const CondolenceAdmin = () => {
         e.preventDefault();
         if (!editingComment.name || !editingComment.content) return;
 
+        setIsSubmitting(true);
         const success = await updateComment(editingComment.id, {
             name: editingComment.name,
-            content: editingComment.content
+            content: editingComment.content,
+            email: editingComment.email,
+            imageUrl: editingComment.imageUrl,
+            image: editingComment.newImage // New image in base64 if provided
         });
 
         if (success) {
             setShowEditModal(false);
             setEditingComment(null);
             loadComments();
+            showToast("Condolence updated successfully");
         }
+        setIsSubmitting(false);
     };
 
     const handleManualAdd = async (e) => {
@@ -63,11 +89,13 @@ const CondolenceAdmin = () => {
 
         await addComment(newMsg.tributeId, {
             name: newMsg.name,
-            text: newMsg.content
+            email: newMsg.email,
+            text: newMsg.content,
+            image: newMsg.image
         });
 
         setShowAddModal(false);
-        setNewMsg({ tributeId: '', name: '', content: '' });
+        setNewMsg({ tributeId: '', name: '', email: '', content: '', image: null });
         loadComments();
     };
 
@@ -82,12 +110,12 @@ const CondolenceAdmin = () => {
             {/* Add Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
                             <h3 className="font-bold text-gray-700">Add Manual Entry</h3>
                             <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600 font-bold text-xl">×</button>
                         </div>
-                        <form onSubmit={handleManualAdd} className="p-6 space-y-4">
+                        <form onSubmit={handleManualAdd} className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Select Memorial</label>
                                 <select
@@ -97,7 +125,7 @@ const CondolenceAdmin = () => {
                                     required
                                 >
                                     <option value="">-- Choose a Memorial --</option>
-                                    {tributes.map(t => (
+                                    {selectableTributes.map(t => (
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
                                 </select>
@@ -113,13 +141,45 @@ const CondolenceAdmin = () => {
                                 />
                             </div>
                             <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+                                    value={newMsg.email}
+                                    onChange={e => setNewMsg({ ...newMsg, email: e.target.value })}
+                                />
+                            </div>
+                            <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Message</label>
                                 <textarea
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary h-32"
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary h-24"
                                     value={newMsg.content}
                                     onChange={e => setNewMsg({ ...newMsg, content: e.target.value })}
                                     required
                                 ></textarea>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Upload Image</label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={async (e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onloadend = () => {
+                                                setNewMsg({ ...newMsg, image: reader.result });
+                                            };
+                                            reader.readAsDataURL(file);
+                                        }
+                                    }}
+                                    className="text-xs text-gray-500"
+                                />
+                                {newMsg.image && (
+                                    <div className="mt-2 w-20 h-20 border rounded overflow-hidden">
+                                        <img src={newMsg.image} className="w-full h-full object-cover" alt="Preview" />
+                                    </div>
+                                )}
                             </div>
                             <button type="submit" className="w-full bg-primary text-white py-2 rounded-md font-bold hover:bg-opacity-90 transition-all">
                                 Save Condolence
@@ -132,12 +192,12 @@ const CondolenceAdmin = () => {
             {/* Edit Modal */}
             {showEditModal && editingComment && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200 border-t-4 border-primary">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md animate-in fade-in zoom-in duration-200 border-t-4 border-primary flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
                             <h3 className="font-bold text-gray-700">Edit Condolence</h3>
                             <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600 font-bold text-xl">×</button>
                         </div>
-                        <form onSubmit={handleUpdate} className="p-6 space-y-4">
+                        <form onSubmit={handleUpdate} className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">From</label>
                                 <input
@@ -149,24 +209,79 @@ const CondolenceAdmin = () => {
                                 />
                             </div>
                             <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary font-medium"
+                                    value={editingComment.email || ''}
+                                    onChange={e => setEditingComment({ ...editingComment, email: e.target.value })}
+                                />
+                            </div>
+                            <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Message</label>
                                 <textarea
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary h-32 leading-relaxed"
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary h-24 leading-relaxed"
                                     value={editingComment.content}
                                     onChange={e => setEditingComment({ ...editingComment, content: e.target.value })}
                                     required
                                 ></textarea>
                             </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Image</label>
+                                {editingComment.imageUrl ? (
+                                    <div className="flex items-center gap-4 mt-1">
+                                        <img src={editingComment.imageUrl} className="w-12 h-12 rounded object-cover border" alt="Current" />
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingComment({ ...editingComment, imageUrl: null })}
+                                            className="text-xs text-red-500 font-bold"
+                                        >
+                                            Remove Image
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-gray-400 italic">No image attached</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Replace/Add Image</label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={async (e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            const reader = new FileReader();
+                                            reader.onloadend = () => {
+                                                setEditingComment({ ...editingComment, newImage: reader.result });
+                                            };
+                                            reader.readAsDataURL(file);
+                                        }
+                                    }}
+                                    className="text-xs text-gray-500"
+                                />
+                                {editingComment.newImage && (
+                                    <div className="mt-2 w-20 h-20 border-2 border-primary/20 rounded overflow-hidden">
+                                        <img src={editingComment.newImage} className="w-full h-full object-cover" alt="Preview New" />
+                                        <p className="text-[8px] bg-primary text-white text-center">New Image</p>
+                                    </div>
+                                )}
+                            </div>
                             <div className="flex gap-3 pt-2">
                                 <button
                                     type="button"
                                     onClick={() => setShowEditModal(false)}
-                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all"
+                                    disabled={isSubmitting}
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
                                 >
                                     Cancel
                                 </button>
-                                <button type="submit" className="flex-[2] bg-primary text-white py-2 rounded-md font-bold hover:bg-opacity-90 shadow-md transition-all">
-                                    Update Entry
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="flex-[2] bg-primary text-white py-2 rounded-md font-bold hover:bg-opacity-90 shadow-md transition-all disabled:bg-gray-400"
+                                >
+                                    {isSubmitting ? 'Updating...' : 'Update Entry'}
                                 </button>
                             </div>
                         </form>

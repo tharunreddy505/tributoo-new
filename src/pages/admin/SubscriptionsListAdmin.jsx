@@ -151,7 +151,7 @@ const DetailPanel = ({ sub, onClose, onEdit, onDelete }) => (
                     </p>
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                         <FontAwesomeIcon icon={faInfinity} className="text-amber-400" />
-                        {sub.is_lifetime ? 'Lifetime — Never Expires' : (sub.status === 'trial' || (sub.status === 'expired' && !sub.paid_start)) ? 'Trial Period (7 Days)' : '1 Year Subscription'}
+                        {sub.is_lifetime ? 'Lifetime — Never Expires' : (sub.status === 'trial' || (sub.status === 'expired' && !sub.paid_start)) ? 'Trial Period (7 Days)' : (sub.product_name === 'Free Memorial' || !sub.product_id) ? '10 Year Access (Free)' : '1 Year Subscription'}
                     </div>
                     {sub._virtual && (
                         <div className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-1 rounded inline-block font-bold">

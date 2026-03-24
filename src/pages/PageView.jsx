@@ -1,10 +1,18 @@
 import React, { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTributeContext } from '../context/TributeContext';
+import { useTranslation } from 'react-i18next';
 import Layout from '../components/layout/Layout';
 import { RenderContentWithShortcodes } from '../components/ContentPart';
-import TranslatedText from '../components/TranslatedText';
 import SEO from '../components/SEO';
+
+const getTranslated = (item, field, lang) => {
+    if (!item) return '';
+    if (lang && lang !== 'en' && item.translations?.[lang]?.[field]) {
+        return item.translations[lang][field];
+    }
+    return item[field] || '';
+};
 
 class PageErrorBoundary extends React.Component {
     constructor(props) {
@@ -38,6 +46,7 @@ class PageErrorBoundary extends React.Component {
 const PageViewContent = () => {
     const { slug } = useParams();
     const { pages, isInitialized } = useTributeContext();
+    const { i18n } = useTranslation();
 
     const page = useMemo(() => {
         if (!pages || !slug) return null;
@@ -87,11 +96,11 @@ const PageViewContent = () => {
             <div className="bg-[#FAF9F6] min-h-screen pt-32 pb-20">
                 <div className="container mx-auto max-w-5xl">
                     <h1 className="text-4xl md:text-5xl font-serif text-dark mb-12 text-center px-6">
-                        <TranslatedText text={page.title} />
+                        {getTranslated(page, 'title', i18n.language)}
                     </h1>
 
                     <div className="w-full px-4">
-                        <RenderContentWithShortcodes content={page.content} />
+                        <RenderContentWithShortcodes content={getTranslated(page, 'content', i18n.language)} />
                     </div>
                 </div>
             </div>

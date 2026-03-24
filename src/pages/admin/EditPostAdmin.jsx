@@ -1,20 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faArrowLeft, faImage, faLink, faUpload, faPlus } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faArrowLeft, faImage, faLink, faUpload, faPlus, faGlobe } from '@fortawesome/free-solid-svg-icons';
 import { useTributeContext } from '../../context/TributeContext';
 import { decodeHtml } from '../../utils/htmlUtils';
 import { Editor } from '@tinymce/tinymce-react';
 import MediaPickerModal from '../../components/admin/MediaPickerModal';
 import { API_URL } from '../../config';
-
 import { compressImage } from '../../utils/imageOptimizer';
+
+const LANGUAGES = [
+    { code: 'en', label: 'English', flag: 'GB' },
+    { code: 'de', label: 'Deutsch', flag: 'DE' },
+    { code: 'it', label: 'Italiano', flag: 'IT' },
+];
 
 const EditPostAdmin = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { posts, addPost, updatePost, showToast } = useTributeContext();
 
+    const [activeLang, setActiveLang] = useState('en');
     const [formData, setFormData] = useState({
         title: '',
         content: '',
@@ -26,9 +32,29 @@ const EditPostAdmin = () => {
         seo_title: '',
         seo_description: '',
         seo_keywords: '',
-        og_image: ''
+        og_image: '',
+        translations: {}
     });
     const [tagInput, setTagInput] = useState('');
+
+    const getLangField = (field) => {
+        if (activeLang === 'en') return formData[field] || '';
+        return formData.translations?.[activeLang]?.[field] || '';
+    };
+
+    const setLangField = (field, value) => {
+        if (activeLang === 'en') {
+            setFormData(prev => ({ ...prev, [field]: value }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                translations: {
+                    ...prev.translations,
+                    [activeLang]: { ...prev.translations?.[activeLang], [field]: value }
+                }
+            }));
+        }
+    };
 
     // Dynamic categories
     const [availableCategories, setAvailableCategories] = useState([]);
@@ -69,7 +95,8 @@ const EditPostAdmin = () => {
                     seo_title: post.seo_title || '',
                     seo_description: post.seo_description || '',
                     seo_keywords: post.seo_keywords || '',
-                    og_image: post.og_image || ''
+                    og_image: post.og_image || '',
+                    translations: post.translations || {}
                 });
             }
         }
@@ -180,6 +207,32 @@ const EditPostAdmin = () => {
                 </div>
             </div>
 
+            {/* Language Switcher */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2 text-gray-400 text-sm font-bold uppercase tracking-wider">
+                        <FontAwesomeIcon icon={faGlobe} />
+                        <span>Language</span>
+                    </div>
+                    <div className="flex gap-1">
+                        {LANGUAGES.map(lang => (
+                            <button
+                                key={lang.code}
+                                onClick={() => setActiveLang(lang.code)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-all border ${activeLang === lang.code ? 'bg-primary text-white border-primary' : 'bg-white text-gray-500 border-gray-200 hover:border-primary hover:text-primary'}`}
+                            >
+                                <span className="text-xs font-black opacity-70">{lang.flag}</span>
+                                {lang.label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-primary ml-2">
+                        Editing <strong>{LANGUAGES.find(l => l.code === activeLang)?.label}</strong> version.
+                        {activeLang !== 'en' && ' Title & Content are per-language. All other settings are shared.'}
+                    </p>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
                     <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 space-y-4">
@@ -187,11 +240,11 @@ const EditPostAdmin = () => {
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Blog Title</label>
                             <input
                                 type="text"
-                                value={formData.title}
-                                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                onBlur={!id ? generateSlug : undefined}
+                                value={getLangField('title')}
+                                onChange={(e) => setLangField('title', e.target.value)}
+                                onBlur={!id && activeLang === 'en' ? generateSlug : undefined}
                                 className="w-full text-xl font-bold border-b border-gray-200 py-2 outline-none focus:border-primary transition-colors"
-                                placeholder="Enter blog title"
+                                placeholder={`Enter blog title in ${LANGUAGES.find(l => l.code === activeLang)?.label}`}
                                 required
                             />
                         </div>
@@ -199,8 +252,9 @@ const EditPostAdmin = () => {
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Content</label>
                             <Editor
+                                key={activeLang}
                                 apiKey={import.meta.env.VITE_TINYMCE_KEY}
-                                value={formData.content}
+                                value={getLangField('content')}
                                 init={{
                                     height: 500,
                                     menubar: true,
@@ -214,7 +268,7 @@ const EditPostAdmin = () => {
                                     content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
                                     branding: false,
                                     promotion: false,
-                                    file_picker_callback: (callback, value, meta) => {
+                                    file_picker_callback: (callback, _value, meta) => {
                                         setMediaPicker({
                                             isOpen: true,
                                             callback: callback,
@@ -222,7 +276,7 @@ const EditPostAdmin = () => {
                                         });
                                     }
                                 }}
-                                onEditorChange={(content) => setFormData(prev => ({ ...prev, content }))}
+                                onEditorChange={(content) => setLangField('content', content)}
                             />
                         </div>
                     </div>

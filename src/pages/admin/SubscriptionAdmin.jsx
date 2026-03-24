@@ -225,13 +225,10 @@ const SubscriptionAdmin = () => {
     const navigate = useNavigate();
     const { i18n } = useTranslation();
     const { addToCart, showToast, clearCart } = useTributeContext();
-    const [subscriptions, setSubscriptions] = useState([]); // Array of subscriptions
-    const [userMemorials, setUserMemorials] = useState([]);
+    const [subscriptions, setSubscriptions] = useState([]);
     const [products, setProducts] = useState([]);
     const [selectedProductId, setSelectedProductId] = useState('');
-    const [starting, setStarting] = useState(false);
-    const [activeRenewSub, setActiveRenewSub] = useState(null); // The specific sub being renewed
-    const [message, setMessage] = useState(null);
+    const [activeRenewSub, setActiveRenewSub] = useState(null);
     const [loading, setLoading] = useState(true);
     const { id: routeId } = useParams();
 
@@ -257,19 +254,6 @@ const SubscriptionAdmin = () => {
         }
     }, []);
 
-    const fetchUserMemorials = useCallback(async () => {
-        try {
-            const res = await fetch(`${BASE_API_URL}/api/tributes`, {
-                headers: getAuthHeaders()
-            });
-            const data = await res.json();
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-            const mine = Array.isArray(data) ? data.filter(t => String(t.userId) === String(user.id) || String(t.user_id) === String(user.id)) : [];
-            setUserMemorials(mine);
-        } catch {
-            setUserMemorials([]);
-        }
-    }, []);
 
     const fetchProducts = useCallback(async () => {
         try {
@@ -287,39 +271,11 @@ const SubscriptionAdmin = () => {
     useEffect(() => {
         fetchSubscriptions();
         fetchProducts();
-        fetchUserMemorials();
-    }, [fetchSubscriptions, fetchProducts, fetchUserMemorials]);
+    }, [fetchSubscriptions, fetchProducts]);
 
-    const startTrial = async () => {
-        if (!selectedProductId) return;
-        setStarting(true);
-        setMessage(null);
-        try {
-            const res = await fetch(`${API_URL}/subscriptions/trial`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify({
-                    product_id: parseInt(selectedProductId),
-                    language: i18n.language
-                })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setMessage({ type: 'success', text: '🎉 Your 7-day free trial has started! Check your email.' });
-                fetchSubscriptions();
-            } else {
-                setMessage({ type: 'error', text: data.error || 'Failed to start trial' });
-            }
-        } catch (err) {
-            setMessage({ type: 'error', text: 'Server error. Please try again.' });
-        } finally {
-            setStarting(false);
-        }
-    };
-
-    const handleRenewSuccess = (updatedSub) => {
+    const handleRenewSuccess = () => {
         setActiveRenewSub(null);
-        setMessage({ type: 'success', text: '✅ Subscription renewed successfully! Check your email for confirmation.' });
+        showToast('Subscription renewed successfully! Check your email for confirmation.', 'success');
         fetchSubscriptions();
     };
 
@@ -546,7 +502,30 @@ const SubscriptionAdmin = () => {
                                     <div className="pt-2">
                                         <button
                                             onClick={() => {
-                                                const product = products.find(p => p.id === sub.product_id) || products[0];
+                                                const user = JSON.parse(localStorage.getItem('user') || '{}');
+                                                const userRole = user.role || 'private';
+
+                                                // Target product logic for upgrades
+                                                let targetProduct = null;
+                                                const currentProduct = products.find(p => p.id === sub.product_id);
+                                                
+                                                const isExposedAsFree = sub._virtual || sub.status === 'trial' || (currentProduct && currentProduct.name && currentProduct.name.toUpperCase().includes('FREE'));
+
+                                                if (isExposedAsFree) {
+                                                    if (userRole === 'company') {
+                                                        targetProduct = products.find(p => 
+                                                            (p.name && (p.name.toUpperCase().includes('CORPORATE') || p.name.toUpperCase().includes('BUSINESS'))) || 
+                                                            (p.category && p.category.toLowerCase().includes('corporate'))
+                                                        );
+                                                    } else {
+                                                        targetProduct = products.find(p => 
+                                                            (p.name && (p.name.toUpperCase().includes('PREMIUM') || p.name.toUpperCase().includes('LIFETIME'))) || 
+                                                            (p.category && (p.category.toLowerCase().includes('premium') || p.category.toLowerCase().includes('lifetime')))
+                                                        );
+                                                    }
+                                                }
+
+                                                const product = targetProduct || currentProduct || products.find(p => p.id === sub.product_id) || products[0];
                                                 if (!product) {
                                                     showToast('Product information not found.', 'error');
                                                     return;

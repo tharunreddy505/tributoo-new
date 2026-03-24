@@ -27,17 +27,46 @@ export const TributeProvider = ({ children }) => {
         return saved ? JSON.parse(saved) : null;
     });
     const [isInitialized, setIsInitialized] = useState(false);
+    const getCartKey = (userId) => {
+        const id = userId ?? JSON.parse(localStorage.getItem('user') || '{}').id;
+        return id ? `tributoo_cart_${id}` : 'tributoo_cart_guest';
+    };
+
+    const getCurrentUserId = () => JSON.parse(localStorage.getItem('user') || '{}').id ?? null;
+
+    const [currentUserId, setCurrentUserId] = useState(() => getCurrentUserId());
+
     const [cart, setCart] = useState(() => {
-        const savedCart = localStorage.getItem('tributoo_cart');
-        return savedCart ? JSON.parse(savedCart) : [];
+        const saved = localStorage.getItem(getCartKey());
+        return saved ? JSON.parse(saved) : [];
     });
     const [appliedCoupon, setAppliedCoupon] = useState(() => {
         const savedCoupon = sessionStorage.getItem('tributoo_coupon');
         return savedCoupon ? JSON.parse(savedCoupon) : null;
     });
 
+    // Reload cart when user changes (login / logout)
     useEffect(() => {
-        localStorage.setItem('tributoo_cart', JSON.stringify(cart));
+        const handleStorageChange = () => {
+            const newUserId = getCurrentUserId();
+            if (newUserId !== currentUserId) {
+                setCurrentUserId(newUserId);
+                const saved = localStorage.getItem(getCartKey(newUserId));
+                setCart(saved ? JSON.parse(saved) : []);
+                setAppliedCoupon(null);
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        // Also poll on focus in case login happened in same tab
+        window.addEventListener('focus', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+            window.removeEventListener('focus', handleStorageChange);
+        };
+    }, [currentUserId]);
+
+    useEffect(() => {
+        localStorage.setItem(getCartKey(), JSON.stringify(cart));
     }, [cart]);
 
     useEffect(() => {
@@ -587,11 +616,12 @@ export const TributeProvider = ({ children }) => {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || "Upload failed");
             }
+            const data = await res.json();
             if (!silent) {
                 await fetchTributes();
                 await fetchMedia();
             }
-            return true;
+            return data;
         } catch (e) {
             console.error("Add Media Error:", e);
             throw e;
@@ -621,11 +651,12 @@ export const TributeProvider = ({ children }) => {
                 throw new Error(errData.error || "Upload failed");
             }
 
+            const data = await res.json();
             if (!silent) {
                 await fetchTributes();
                 await fetchMedia();
             }
-            return true;
+            return data;
         } catch (e) {
             console.error("Upload Media File Error:", e);
             throw e;
@@ -635,7 +666,10 @@ export const TributeProvider = ({ children }) => {
 
     const removeComment = async (commentId) => {
         try {
-            const res = await fetch(`${API_URL}/comments/${commentId}`, { method: 'DELETE' });
+            const res = await fetch(`${API_URL}/comments/${commentId}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
             if (!res.ok) throw new Error("Delete failed");
             await fetchTributes();
             return true;
@@ -646,7 +680,10 @@ export const TributeProvider = ({ children }) => {
         try {
             const res = await fetch(`${API_URL}/comments/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
                 body: JSON.stringify(commentData)
             });
             if (!res.ok) throw new Error("Update failed");
@@ -667,37 +704,62 @@ export const TributeProvider = ({ children }) => {
         }
     };
 
+    const syncCartToServer = async (items) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            await fetch(`${API_URL}/cart/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ items })
+            });
+        } catch (e) { /* silent — cart still saved in localStorage */ }
+    };
+
     const addToCart = (product, quantity = 1, metadata = {}) => {
         setCart(prev => {
+            let updated;
             const existing = prev.find(item => item.id === product.id && JSON.stringify(item.metadata) === JSON.stringify(metadata));
             if (existing) {
-                return prev.map(item =>
+                updated = prev.map(item =>
                     (item.id === product.id && JSON.stringify(item.metadata) === JSON.stringify(metadata))
                         ? { ...item, quantity: item.quantity + quantity }
                         : item
                 );
+            } else {
+                updated = [...prev, { ...product, quantity, metadata }];
             }
-            return [...prev, { ...product, quantity, metadata }];
+            syncCartToServer(updated);
+            return updated;
         });
         showToast(`${product.name} added to cart!`, 'success');
     };
 
     const removeFromCart = (id, metadata = {}) => {
-        setCart(prev => prev.filter(item => !(item.id === id && JSON.stringify(item.metadata) === JSON.stringify(metadata))));
+        setCart(prev => {
+            const updated = prev.filter(item => !(item.id === id && JSON.stringify(item.metadata) === JSON.stringify(metadata)));
+            syncCartToServer(updated);
+            return updated;
+        });
     };
 
     const updateCartQuantity = (id, quantity, metadata = {}) => {
         if (quantity < 1) return removeFromCart(id, metadata);
-        setCart(prev => prev.map(item =>
-            (item.id === id && JSON.stringify(item.metadata) === JSON.stringify(metadata))
-                ? { ...item, quantity }
-                : item
-        ));
+        setCart(prev => {
+            const updated = prev.map(item =>
+                (item.id === id && JSON.stringify(item.metadata) === JSON.stringify(metadata))
+                    ? { ...item, quantity }
+                    : item
+            );
+            syncCartToServer(updated);
+            return updated;
+        });
     };
 
     const clearCart = () => {
         setCart([]);
         setAppliedCoupon(null);
+        syncCartToServer([]);
     };
 
     const applyCoupon = async (code) => {

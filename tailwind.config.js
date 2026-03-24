@@ -13,9 +13,9 @@ export default {
         'text-gray': '#666666',
       },
       fontFamily: {
-        sans: ['Figtree', 'sans-serif'],
-        serif: ['Figtree', 'serif'],
-        description: ['Manrope', 'sans-serif'],
+        sans: ['"Figtree"', 'sans-serif'],
+        serif: ['"Playfair Display"', 'serif'],
+        description: ['"Figtree"', 'sans-serif'],
       },
       animation: {
         fadeIn: 'fadeIn 0.2s ease-in-out',

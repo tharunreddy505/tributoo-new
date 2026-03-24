@@ -1,10 +1,9 @@
-import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlay } from '@fortawesome/free-solid-svg-icons';
 import { useTranslation } from 'react-i18next';
 import heroImage from '../../assets/images/hero-image.png';
 
-const Hero = ({ onOpenModal }) => {
+const Hero = () => {
     const { t } = useTranslation();
 
     return (
@@ -30,8 +29,8 @@ const Hero = ({ onOpenModal }) => {
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                     <button
-                        onClick={onOpenModal}
-                        className="bg-white text-dark px-8 py-3 rounded-full font-medium hover:bg-opacity-90 transition-all flex items-center gap-2"
+                        onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
+                        className="bg-white text-dark px-8 py-3 rounded-full font-medium hover:bg-opacity-100 transition-all flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95"
                     >
                         {t('hero.cta_create')}
                     </button>

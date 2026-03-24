@@ -10,6 +10,15 @@ const TranslatedText = ({ text }) => {
     return <>{translated}</>;
 };
 
+// Returns manually-entered translation if available, otherwise falls back to English
+const getTranslated = (item, field, lang) => {
+    if (!item) return '';
+    if (lang && lang !== 'en' && item.translations?.[lang]?.[field]) {
+        return item.translations[lang][field];
+    }
+    return item[field] || '';
+};
+
 const BlogPage = () => {
     const { posts, isInitialized } = useTributeContext();
     const { t, i18n } = useTranslation();
@@ -71,11 +80,10 @@ const BlogPage = () => {
                                     </div>
                                     <div className="p-6 flex-1 flex flex-col">
                                         <h3 className="text-xl font-bold text-dark mb-3 group-hover:text-primary transition-colors line-clamp-2">
-                                            <TranslatedText text={post.title} />
+                                            {getTranslated(post, 'title', i18n.language)}
                                         </h3>
                                         <div className="text-gray-500 text-sm mb-4 flex-1 line-clamp-3 overflow-hidden text-ellipsis">
-                                            {/* Strip HTML tags safely for excerpt */}
-                                            <TranslatedText text={post.content?.replace(/<[^>]+>/g, '').substring(0, 150) + '...'} />
+                                            {getTranslated(post, 'content', i18n.language)?.replace(/<[^>]+>/g, '').substring(0, 150) + '...'}
                                         </div>
                                         <span className="text-primary font-bold text-sm uppercase tracking-wider flex items-center gap-2">
                                             {t('blog.read_more', 'Read Article')}

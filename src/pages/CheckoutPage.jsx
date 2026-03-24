@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import localforage from 'localforage';
 import { useTributeContext } from '../context/TributeContext';
 import Navbar from '../components/layout/Navbar';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -17,7 +18,7 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 import { API_URL } from '../config';
 
 const CheckoutPage = () => {
-    const { cart, clearCart, showToast, appliedCoupon } = useTributeContext();
+    const { cart, clearCart, showToast, appliedCoupon, fetchTributes, uploadMediaFile } = useTributeContext();
     const { i18n } = useTranslation();
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -27,7 +28,7 @@ const CheckoutPage = () => {
         firstName: '',
         lastName: '',
         companyName: '',
-        country: 'Italy',
+        country: 'Germany',
         address: '',
         apartment: '',
         city: '',
@@ -39,7 +40,7 @@ const CheckoutPage = () => {
         shippingFirstName: '',
         shippingLastName: '',
         shippingCompanyName: '',
-        shippingCountry: 'Italy',
+        shippingCountry: 'Germany',
         shippingAddress: '',
         shippingApartment: '',
         shippingCity: '',
@@ -52,7 +53,7 @@ const CheckoutPage = () => {
     const discount = appliedCoupon ? appliedCoupon.discount : 0;
     const total = Math.max(0, subtotal + shipping - discount);
 
-    const countries = React.useMemo(() => Country.getAllCountries(), []);
+    const countries = React.useMemo(() => Country.getAllCountries().filter(c => ['DE', 'AT', 'CH'].includes(c.isoCode)), []);
     const availableStates = React.useMemo(() => {
         const selectedCountryData = countries.find(c => c.name === formData.country);
         return selectedCountryData ? State.getStatesOfCountry(selectedCountryData.isoCode) : [];
@@ -114,6 +115,23 @@ const CheckoutPage = () => {
                     body: JSON.stringify({ amount: total }),
                 });
                 const data = await res.json();
+                
+                // --- PROACTIVE: Save pending order to track abandonment ---
+                try {
+                    await fetch(`${API_URL}/api/orders/pending`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            ...formData,
+                            total,
+                            paymentIntentId: data.paymentIntentId,
+                            items: cart
+                        }),
+                    });
+                } catch (pendingErr) { 
+                    console.error("Could not save pending status:", pendingErr); 
+                }
+
                 setClientSecret(data.clientSecret);
                 setStep(2);
             } catch (error) {
@@ -144,84 +162,146 @@ const CheckoutPage = () => {
             });
 
             // ── Create pending memorial if user filled the form before subscribing ──
-            const pendingDraft = sessionStorage.getItem('pending_memorial_draft');
+            const pendingDraftFromSession = sessionStorage.getItem('pending_memorial_draft');
             let newlyCreatedTributeId = null;
-            if (pendingDraft) {
+
+            if (pendingDraftFromSession) {
                 try {
-                    const draft = JSON.parse(pendingDraft);
+                    // Try getting the high-fidelity draft from localforage (has File objects)
+                    const draft = await localforage.getItem('pending_memorial_draft') || JSON.parse(pendingDraftFromSession);
+                    
                     const token = localStorage.getItem('token');
                     const headers = {
                         'Content-Type': 'application/json',
                         ...(token ? { Authorization: `Bearer ${token}` } : {})
                     };
 
-                    // Create the tribute
+                    // Strip files from JSON before creating record
+                    const { photo, cover, images, videos, documents, ...tributeInfo } = draft;
+
+                    // Create the tribute record
                     const tributeRes = await fetch(`${API_URL}/api/tributes`, {
                         method: 'POST',
                         headers,
-                        body: JSON.stringify({ ...draft, isPaidDraft: true })
+                        body: JSON.stringify({ ...tributeInfo, isPaidDraft: true })
                     });
 
                     if (tributeRes.ok) {
                         const newTribute = await tributeRes.json();
                         newlyCreatedTributeId = newTribute.id;
+
+                        // CRITICAL: Activate subscription FIRST so the server knows it's Premium/Corporate 
+                        // before we start uploading unlimited images/videos.
+                        try {
+                            const subItem = cart.find(i => i.metadata?.type === 'memorial_subscription');
+                            if (subItem) {
+                                await fetch(`${API_URL}/api/subscriptions/renew`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                                    },
+                                    body: JSON.stringify({
+                                        payment_intent_id: paymentIntent.id,
+                                        product_id: subItem.id,
+                                        memorial_name: subItem.metadata?.memorial_name,
+                                        memorial_id: newlyCreatedTributeId,
+                                        subscription_id: subItem.metadata?.subscription_id,
+                                        language: i18n.language,
+                                        coupon_applied: !!appliedCoupon,
+                                        coupon_code: appliedCoupon ? appliedCoupon.code : null
+                                    })
+                                });
+                            }
+                        } catch (subErr) {
+                            console.error('Subscription activation error:', subErr);
+                            // We continue because the tribute is created, the user can upgrade manually if needed
+                        }
+
+                        // Sequentially upload all media files using binary FormData
+                        // Using individual try-blocks so one bad file doesn't crash the whole process
+                        try {
+                            if (photo instanceof File) await uploadMediaFile(newTribute.id, 'photo', photo, true);
+                        } catch (e) { console.error("Photo upload failed:", e); }
+                        
+                        try {
+                            if (cover instanceof File) await uploadMediaFile(newTribute.id, 'cover', cover, true);
+                        } catch (e) { console.error("Cover upload failed:", e); }
+
                         // Upload gallery images
-                        if (draft.images?.length > 0) {
-                            for (const img of draft.images) {
-                                await fetch(`${API_URL}/api/tributes/${newTribute.id}/media`, {
-                                    method: 'POST',
-                                    headers,
-                                    body: JSON.stringify({ type: 'image', url: img })
-                                });
+                        if (images?.length > 0) {
+                            for (const img of images) {
+                                try {
+                                    if (img instanceof File) await uploadMediaFile(newTribute.id, 'image', img, true);
+                                } catch (e) { console.error("Gallery image upload failed:", e); }
                             }
                         }
+
                         // Upload gallery videos
-                        if (draft.videos?.length > 0) {
-                            for (const vid of draft.videos) {
-                                await fetch(`${API_URL}/api/tributes/${newTribute.id}/media`, {
-                                    method: 'POST',
-                                    headers,
-                                    body: JSON.stringify({ type: 'video', url: vid })
-                                });
+                        if (videos?.length > 0) {
+                            for (const vid of videos) {
+                                try {
+                                    if (vid instanceof File) await uploadMediaFile(newTribute.id, 'video', vid, true);
+                                } catch (e) { console.error("Video upload failed:", e); }
                             }
                         }
+
+                        // Upload documents
+                        if (documents?.length > 0) {
+                            for (const doc of documents) {
+                                try {
+                                    if (doc instanceof File) await uploadMediaFile(newTribute.id, 'document', doc, true);
+                                } catch (e) { console.error("Document upload failed:", e); }
+                            }
+                        }
+
                         showToast(`Memorial "${draft.name}" published successfully!`, 'success');
                     }
+                    
+                    // Cleanup drafts
                     sessionStorage.removeItem('pending_memorial_draft');
+                    await localforage.removeItem('pending_memorial_draft');
                 } catch (draftErr) {
                     console.error('Failed to create memorial from draft:', draftErr);
                     showToast('Payment succeeded but memorial creation failed. Please contact support.', 'warning');
                 }
             } else {
+                // ── Upgrade existing memorial subscription ──
+                try {
+                    const subItem = cart.find(i => i.metadata?.type === 'memorial_subscription');
+                    if (subItem) {
+                        const token = localStorage.getItem('token');
+                        await fetch(`${API_URL}/api/subscriptions/renew`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(token ? { Authorization: `Bearer ${token}` } : {})
+                            },
+                            body: JSON.stringify({
+                                payment_intent_id: paymentIntent.id,
+                                product_id: subItem.id,
+                                memorial_name: subItem.metadata?.memorial_name,
+                                memorial_id: subItem.metadata?.memorial_id,
+                                subscription_id: subItem.metadata?.subscription_id,
+                                language: i18n.language,
+                                coupon_applied: !!appliedCoupon,
+                                coupon_code: appliedCoupon ? appliedCoupon.code : null
+                            })
+                        });
+                    }
+                } catch (subErr) {
+                    console.error('Subscription activation error:', subErr);
+                }
                 showToast("Order placed successfully!", "success");
             }
 
-            // ── Auto-activate subscription for memorial_subscription cart items ──
+            // ── Cleanup (Handled inside draft loop if it ran, but we do it again to be safe) ──
             try {
-                const subItem = cart.find(i => i.metadata?.type === 'memorial_subscription');
-                if (subItem) {
-                    const token = localStorage.getItem('token');
-                    await fetch(`${API_URL}/api/subscriptions/renew`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { Authorization: `Bearer ${token}` } : {})
-                        },
-                        body: JSON.stringify({
-                            payment_intent_id: paymentIntent.id,
-                            product_id: subItem.id,
-                            memorial_name: subItem.metadata?.memorial_name,
-                            memorial_id: newlyCreatedTributeId || subItem.metadata?.memorial_id,
-                            language: i18n.language,
-                            coupon_applied: !!appliedCoupon,
-                            coupon_code: appliedCoupon ? appliedCoupon.code : null
-                        })
-                    });
-                }
-            } catch (subErr) {
-                console.error('Subscription activation error (non-blocking):', subErr);
-            }
+                sessionStorage.removeItem('pending_memorial_draft');
+                await localforage.removeItem('pending_memorial_draft');
+            } catch (e) {}
 
+            if (fetchTributes) await fetchTributes();
             clearCart();
             navigate('/admin/memorials');
         } catch (error) {

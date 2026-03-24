@@ -72,12 +72,9 @@ const getEmailTemplate = async (slug, language = 'en') => {
 
 const commonEmailHeader = `
 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e0e0e0;">
-    <div style="background-color: #1a1a1a; padding: 20px 20px; text-align: center; position: relative; border-radius: 0;">
-        <img src="https://www.tributoo.com/wp-content/uploads/2025/05/tributoo-icon.png" alt="Tributoo" style="width: 70px; margin-bottom: 10px;">
-        <h1 style="color: #ffffff; font-size: 28px; margin: 0; font-weight: normal; letter-spacing: 1px;">[header_title]</h1>
-        <div style="text-align: right; margin-top: 0; padding-right: 15px;">
-            <img src="https://www.tributoo.com/wp-content/uploads/2024/10/tributoo-w.png" alt="Tributoo Logo" style="width: 80px;">
-        </div>
+    <div style="background-color: #1a1a1a; padding: 30px 20px; text-align: center;">
+        <img src="https://www.tributoo.com/wp-content/uploads/2024/10/tributoo-w.png" alt="Tributoo" style="width: 120px; margin-bottom: 20px;">
+        <h1 style="color: #ffffff; font-size: 24px; margin: 0; font-weight: 300; letter-spacing: 1px;">[header_title]</h1>
     </div>
     <div style="padding: 40px; color: #444444; line-height: 1.6; font-size: 16px;">
 `;
@@ -112,12 +109,15 @@ const sendTemplatedEmail = async (to, templateSlug, data = {}, attachments = [],
             fullHtml += commonEmailFooter;
         }
 
-        // Replace shortcodes in subject and fullHtml
+        // Replace shortcodes in both [key] and {{key}} formats
         const allShortcodes = { ...data };
         for (const [key, val] of Object.entries(allShortcodes)) {
-            const regex = new RegExp(`\\[${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'g');
-            subject = subject.replace(regex, val);
-            fullHtml = fullHtml.replace(regex, val);
+            const safeVal = val == null ? '' : String(val);
+            const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const squareBracketRegex = new RegExp(`\\[${escapedKey}\\]`, 'g');
+            const doubleCurlyRegex = new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g');
+            subject = subject.replace(squareBracketRegex, safeVal).replace(doubleCurlyRegex, safeVal);
+            fullHtml = fullHtml.replace(squareBracketRegex, safeVal).replace(doubleCurlyRegex, safeVal);
         }
 
         const mailOptions = {
@@ -309,6 +309,7 @@ app.post('/api/create-payment-intent', async (req, res) => {
 
         res.send({
             clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id
         });
     } catch (error) {
         console.error("Stripe Error:", error.message);
@@ -348,6 +349,45 @@ app.post('/api/vouchers/validate', async (req, res) => {
     }
 });
 
+// ── Abandoned Cart Save ──────────────────────────────────────────────────────
+app.post('/api/cart/save', authenticateToken, async (req, res) => {
+    try {
+        const { items } = req.body;
+        const userId = req.user.id;
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS abandoned_carts (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL UNIQUE,
+                items JSONB NOT NULL DEFAULT '[]',
+                reminder_sent BOOLEAN DEFAULT FALSE,
+                converted BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        if (!items || items.length === 0) {
+            await pool.query(
+                `UPDATE abandoned_carts SET converted = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = $1`,
+                [userId]
+            );
+            return res.json({ message: 'Cart cleared' });
+        }
+
+        await pool.query(
+            `INSERT INTO abandoned_carts (user_id, items, reminder_sent, converted, updated_at)
+             VALUES ($1, $2, FALSE, FALSE, CURRENT_TIMESTAMP)
+             ON CONFLICT (user_id) DO UPDATE SET items = $2, reminder_sent = FALSE, converted = FALSE, updated_at = CURRENT_TIMESTAMP`,
+            [userId, JSON.stringify(items)]
+        );
+        res.json({ message: 'Cart saved' });
+    } catch (err) {
+        console.error('Save cart error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 app.post('/api/orders', async (req, res) => {
     try {
         const {
@@ -383,12 +423,30 @@ app.post('/api/orders', async (req, res) => {
             };
         }
 
-        const newOrder = await pool.query(
-            "INSERT INTO orders (customer_email, customer_name, address, total_amount, stripe_payment_intent_id, status) VALUES ($1, $2, $3, $4, $5, 'paid') RETURNING id",
-            [email, customerName, JSON.stringify(fullAddress), total, paymentIntentId]
-        );
+        const checkExisting = await pool.query("SELECT id FROM orders WHERE stripe_payment_intent_id = $1", [paymentIntentId]);
 
-        const orderId = newOrder.rows[0].id;
+        let orderId;
+        if (checkExisting.rows.length > 0) {
+            await pool.query(
+                "UPDATE orders SET status = 'paid', customer_email = $1, customer_name = $2, address = $3, total_amount = $4, created_at = CURRENT_TIMESTAMP WHERE stripe_payment_intent_id = $5",
+                [email, customerName, JSON.stringify(fullAddress), total, paymentIntentId]
+            );
+            orderId = checkExisting.rows[0].id;
+        } else {
+            const newOrder = await pool.query(
+                "INSERT INTO orders (customer_email, customer_name, address, total_amount, stripe_payment_intent_id, status) VALUES ($1, $2, $3, $4, $5, 'paid') RETURNING id",
+                [email, customerName, JSON.stringify(fullAddress), total, paymentIntentId]
+            );
+            orderId = newOrder.rows[0].id;
+        }
+
+        // Mark abandoned cart as converted so no reminder fires
+        try {
+            const userByEmail = await pool.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [email]);
+            if (userByEmail.rows.length > 0) {
+                await pool.query(`UPDATE abandoned_carts SET converted = TRUE WHERE user_id = $1`, [userByEmail.rows[0].id]);
+            }
+        } catch (e) { /* table may not exist yet */ }
 
         // Mark applied coupon as used if any
         if (req.body.couponCode) {
@@ -563,31 +621,145 @@ app.post('/api/orders', async (req, res) => {
             );
         }
 
-        // Send General Payment Confirmation Email (Styled like the requested template)
+        // Send Detailed Order Confirmation Email
         try {
-            const hasMemorial = items.some(item => item.metadata && item.metadata.memorial_id);
-            const memorialItem = items.find(item => item.metadata && item.metadata.memorial_id);
-            let memorialLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/admin/memorials`;
+            const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://www.tributoo.de';
+            const orderDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-            if (memorialItem && memorialItem.metadata.memorial_id) {
-                const tribRes = await pool.query('SELECT slug FROM tributes WHERE id = $1', [memorialItem.metadata.memorial_id]);
-                if (tribRes.rows.length > 0 && tribRes.rows[0].slug) {
-                    memorialLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/memorial/${tribRes.rows[0].slug}`;
+            // Retrieve card details from Stripe
+            let cardBrand = '', cardLast4 = '';
+            try {
+                if (paymentIntentId && !paymentIntentId.startsWith('free_')) {
+                    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['payment_method'] });
+                    const card = pi.payment_method?.card;
+                    if (card) {
+                        cardBrand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : '';
+                        cardLast4 = card.last4 || '';
+                    }
                 }
+            } catch (stripeErr) { console.error('Stripe card details fetch error:', stripeErr.message); }
+
+            // Items table
+            const itemRows = items.map(item => `
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#374151;">${item.name}</td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;color:#374151;">${item.quantity}</td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:right;color:#374151;">€ ${parseFloat(item.price * item.quantity).toFixed(2)}</td>
+                </tr>`).join('');
+
+            const orderItemsTable = `
+                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px;border:1px solid #e5e7eb;">
+                    <thead>
+                        <tr style="background:#f9fafb;">
+                            <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">Product</th>
+                            <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">Quantity</th>
+                            <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>${itemRows}</tbody>
+                </table>`;
+
+            // Subtotals table
+            const paymentMethodLabel = cardLast4 ? `${cardBrand} ending in ${cardLast4}` : 'Card';
+            const subtotalsTable = `
+                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px;border:1px solid #e5e7eb;">
+                    <tr><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;color:#374151;">Subtotal:</td><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;text-align:right;">€ ${parseFloat(total).toFixed(2)}</td></tr>
+                    <tr><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;color:#374151;">Shipping:</td><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;text-align:right;">Free Shipping</td></tr>
+                    <tr><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;color:#374151;">Tax:</td><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;text-align:right;">€ 0.00</td></tr>
+                    <tr><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;color:#374151;">Payment method:</td><td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;text-align:right;">${paymentMethodLabel}</td></tr>
+                    <tr><td style="padding:10px 12px;font-size:14px;font-weight:700;color:#111827;">Total:</td><td style="padding:10px 12px;font-size:14px;font-weight:700;text-align:right;">€ ${parseFloat(total).toFixed(2)}</td></tr>
+                </table>`;
+
+            // Subscription info (if any subscription product purchased)
+            let subscriptionInfoHtml = '';
+            const subCartItem = items.find(i => i.metadata && i.metadata.memorial_id);
+            if (subCartItem) {
+                try {
+                    const subRes = await pool.query(
+                        `SELECT s.id, s.paid_start, s.paid_end, s.is_lifetime, p.price
+                         FROM subscriptions s LEFT JOIN products p ON s.product_id = p.id
+                         WHERE s.memorial_id = $1 AND s.user_id = (SELECT id FROM users WHERE email = $2 LIMIT 1)
+                         ORDER BY s.id DESC LIMIT 1`,
+                        [subCartItem.metadata.memorial_id, email]
+                    );
+                    if (subRes.rows.length > 0) {
+                        const sub = subRes.rows[0];
+                        const startStr = sub.paid_start ? new Date(sub.paid_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : orderDate;
+                        const endStr = sub.is_lifetime ? 'Lifetime' : (sub.paid_end ? new Date(sub.paid_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A');
+                        const recurringLabel = sub.is_lifetime ? 'No Renewal (Lifetime)' : `Next payment: ${endStr}`;
+                        subscriptionInfoHtml = `
+                            <h3 style="font-size:16px;font-weight:700;color:#1a1a1a;margin:24px 0 12px;">Subscription information</h3>
+                            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px;border:1px solid #e5e7eb;">
+                                <thead>
+                                    <tr style="background:#f9fafb;">
+                                        <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">ID</th>
+                                        <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">Start date</th>
+                                        <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">End date</th>
+                                        <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;">Recurring total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;"><a href="${siteUrl}/admin/subscriptions" style="color:#D4AF37;font-weight:bold;">#${sub.id}</a></td>
+                                        <td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;">${startStr}</td>
+                                        <td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;">${endStr}</td>
+                                        <td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #e5e7eb;">€ ${parseFloat(sub.price || subCartItem.price || 0).toFixed(2)}<br><small style="color:#6b7280;">${recurringLabel}</small></td>
+                                    </tr>
+                                </tbody>
+                            </table>`;
+                    }
+                } catch (subErr) { console.error('Subscription info for email error:', subErr.message); }
             }
 
-            const memorialInfo = hasMemorial ? `
-                <p>Your memorial page will remain <strong>active and permanently accessible</strong>.</p>
-                <p>Here is the link to the page:<br>
-                <a href="${memorialLink}" style="color: #c59d5f; font-weight: bold; text-decoration: underline;">To the memorial page.</a></p>
-            ` : `
-                <p>Your order has been processed successfully. If you purchased vouchers, you will receive them in a separate email shortly.</p>
-            `;
+            // Billing & Shipping addresses
+            const billingLines = [
+                `<strong>${firstName} ${lastName}</strong>`,
+                companyName,
+                city,
+                address,
+                [zipCode, state].filter(Boolean).join(' '),
+                country,
+                phone,
+                email
+            ].filter(Boolean).join('<br>');
 
-            await sendTemplatedEmail(email, 'payment_confirmation', {
-                user_name: firstName || 'Customer',
-                order_id_info: `for Order #${orderId}`,
-                memorial_info: memorialInfo
+            let shippingLines = billingLines;
+            if (shipToDifferentAddress) {
+                shippingLines = [
+                    `<strong>${shippingFirstName} ${shippingLastName}</strong>`,
+                    shippingCompanyName,
+                    shippingCity,
+                    shippingAddress,
+                    [shippingZipCode, shippingState].filter(Boolean).join(' '),
+                    shippingCountry
+                ].filter(Boolean).join('<br>');
+            }
+
+            const addressSection = `
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
+                    <tr>
+                        <td width="48%" valign="top">
+                            <h3 style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:12px;">Billing address</h3>
+                            <p style="font-size:13px;color:#374151;line-height:1.8;">${billingLines}</p>
+                        </td>
+                        <td width="4%"></td>
+                        <td width="48%" valign="top">
+                            <h3 style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:12px;">Shipping address</h3>
+                            <p style="font-size:13px;color:#374151;line-height:1.8;">${shippingLines}</p>
+                        </td>
+                    </tr>
+                </table>`;
+
+            await sendTemplatedEmail(email, 'order_confirmation', {
+                header_title: `New Order: #${orderId}`,
+                customer_full_name: `${firstName} ${lastName}`.trim(),
+                order_id: orderId,
+                order_date: orderDate,
+                order_items_table: orderItemsTable,
+                order_subtotals_table: subtotalsTable,
+                subscription_info: subscriptionInfoHtml,
+                address_section: addressSection,
+                site_url: siteUrl
             });
         } catch (mailErr) {
             console.error("Order confirmation email failed:", mailErr);
@@ -596,7 +768,48 @@ app.post('/api/orders', async (req, res) => {
         res.json({ success: true, orderId });
     } catch (err) {
         console.error("Create Order Error:", err.message);
+
+        // Send order failure email if we have the customer's email
+        try {
+            const { email, firstName, paymentIntentId } = req.body;
+            if (email) {
+                const siteUrl = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://www.tributoo.de';
+                await sendTemplatedEmail(email, 'order_failed', {
+                    user_name: firstName || 'Customer',
+                    payment_intent_id: paymentIntentId || 'N/A',
+                    error_message: err.message || 'An unexpected error occurred',
+                    support_email: process.env.SUPPORT_EMAIL || process.env.SMTP_USER || 'support@tributoo.de',
+                    site_url: siteUrl,
+                    header_title: 'Order Processing Issue'
+                });
+            }
+        } catch (mailErr) {
+            console.error("Order failure email also failed:", mailErr.message);
+        }
+
         res.status(500).json({ error: "Failed to create order" });
+    }
+});
+
+app.post('/api/orders/pending', async (req, res) => {
+    try {
+        const { email, firstName, lastName, total, paymentIntentId, items } = req.body;
+        if (!email || !paymentIntentId) return res.status(400).json({ error: "Missing data" });
+
+        const customerName = `${firstName} ${lastName}`.trim();
+        
+        await pool.query(
+            `INSERT INTO orders (customer_email, customer_name, total_amount, stripe_payment_intent_id, status) 
+             VALUES ($1, $2, $3, $4, 'pending')
+             ON CONFLICT (stripe_payment_intent_id) DO UPDATE 
+             SET customer_email = EXCLUDED.customer_email, customer_name = EXCLUDED.customer_name, total_amount = EXCLUDED.total_amount`,
+            [email, customerName, total, paymentIntentId]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Pending Order Error:", err.message);
+        res.status(500).json({ error: "Failed to save pending order" });
     }
 });
 
@@ -864,7 +1077,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
 
 app.put('/api/auth/profile', authenticateToken, async (req, res) => {
     try {
-        const { username, email } = req.body;
+        const { username, email, companyName, description, visibleInCarousel, profilePicture } = req.body;
 
         // Basic validation
         if (!username || !email) return res.status(400).json({ error: "Username and email are required" });
@@ -873,7 +1086,32 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
         const check = await pool.query("SELECT id FROM users WHERE (username = $1 OR email = $2) AND id != $3", [username, email, req.user.id]);
         if (check.rows.length > 0) return res.status(400).json({ error: "Username or email already taken" });
 
-        await pool.query("UPDATE users SET username = $1, email = $2 WHERE id = $3", [username, email, req.user.id]);
+        // Fetch user's role to determine which fields to save
+        const userRoleRes = await pool.query("SELECT role FROM users WHERE id = $1", [req.user.id]);
+        const userRole = userRoleRes.rows[0]?.role;
+
+        if (userRole === 'company') {
+            // Company users: also save company-specific fields
+            await pool.query(
+                `UPDATE users 
+                 SET username = $1, email = $2, company_name = $3, company_description = $4, 
+                     is_visible = $5, logo_url = COALESCE($6, logo_url)
+                 WHERE id = $7`,
+                [
+                    username,
+                    email,
+                    companyName || username,
+                    description || null,
+                    visibleInCarousel === 'yes' ? true : false,
+                    profilePicture || null,
+                    req.user.id
+                ]
+            );
+        } else {
+            // All other roles: only save username and email
+            await pool.query("UPDATE users SET username = $1, email = $2 WHERE id = $3", [username, email, req.user.id]);
+        }
+
         res.json({ message: "Profile updated" });
     } catch (err) {
         console.error("Update Profile Error:", err.message);
@@ -1157,6 +1395,8 @@ const mapTribute = (row, req) => ({
     createdAt: row.created_at,
     videoUrls: row.video_urls || [],
     status: row.status || 'public',
+    isAnniversaryReminder: row.is_anniversary_reminder || 'no',
+    reminderOptions: row.reminder_options || [],
     images: [],
     videos: [],
     comments: []
@@ -1201,24 +1441,57 @@ app.get('/api/tributes', async (req, res) => {
         let rows = tributeRes.rows;
         const now = new Date();
 
-        // Expiration sync removed - memorials are now permanent.
-
         // All memorials are now viewable if published, or if owner
+        // BUT Free memorials now expire after 10 years for general public
         rows = rows.filter(row => {
             if (isAdminUser) return true;
-            const isViewableStatus = row.status === 'public' || row.status === 'private' || !row.status;
+            
             const isOwner = currentUser && String(row.user_id) === String(currentUser.id);
-            return isViewableStatus || isOwner;
+            if (isOwner) return true;
+
+            // Check expiration
+            if (row.is_lifetime) {
+                // Permanent - no filter
+            } else if (row.paid_end) {
+                if (now > new Date(row.paid_end)) return false;
+            } else if (row.trial_end) {
+                if (now > new Date(row.trial_end)) return false;
+            } else {
+                // No subscription = Free Memorial. Expires after 10 years.
+                const createdAt = new Date(row.created_at);
+                const expiryDate = new Date(createdAt);
+                expiryDate.setFullYear(expiryDate.getFullYear() + 10);
+                if (now > expiryDate) return false;
+            }
+
+            const isViewableStatus = row.status === 'public' || row.status === 'private' || !row.status;
+            return isViewableStatus;
         });
 
         const tributes = rows.map(row => {
             const tribute = mapTribute(row, req);
             tribute.subscriptionStatus = row.subscription_status || 'active';
-            tribute.isLifetime = true;
-            tribute.trialEnd = null;
-            tribute.paidEnd = null;
+            
+            if (row.is_lifetime) {
+                tribute.isLifetime = true;
+                tribute.trialEnd = null;
+                tribute.paidEnd = null;
+            } else if (row.paid_end || row.trial_end) {
+                tribute.isLifetime = false;
+                tribute.trialEnd = row.trial_end;
+                tribute.paidEnd = row.paid_end;
+            } else {
+                // Free Memorial - 10 year expiry
+                tribute.isLifetime = false;
+                tribute.trialEnd = null;
+                const createdAt = new Date(row.created_at);
+                const expiryDate = new Date(createdAt);
+                expiryDate.setFullYear(expiryDate.getFullYear() + 10);
+                tribute.paidEnd = expiryDate;
+            }
+
             tribute.authorName = row.author_name;
-            tribute.packageName = row.product_name;
+            tribute.packageName = row.product_name || (row.subscription_status ? null : 'Free Memorial');
             return tribute;
         });
 
@@ -1271,6 +1544,7 @@ app.get('/api/tributes', async (req, res) => {
                         id: c.id,
                         name: c.name,
                         text: c.content,
+                        imageUrl: formatMediaUrl(c.image_url, req),
                         date: new Date(c.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                     });
                 }
@@ -1287,23 +1561,50 @@ app.get('/api/tributes', async (req, res) => {
 app.post('/api/tributes', authenticateToken, async (req, res) => {
     console.log("Receive POST request to /api/tributes. Body size approx:", JSON.stringify(req.body).length);
     try {
-        const { name, dates, birthDate, passingDate, bio, photo, coverUrl, slug, userId, videoUrls, subscription_id, status, isPaidDraft } = req.body;
+        const { name, dates, birthDate, passingDate, bio, photo, coverUrl, slug, userId, videoUrls, subscription_id, status, isPaidDraft, isAnniversaryReminder, reminderOptions, graveAddress, graveLatitude, graveLongitude, showGraveLocation, selectedPackage } = req.body;
 
-        // Restriction: One free memorial page per user
-        if (!isPaidDraft) {
-            const existingCount = await pool.query("SELECT COUNT(*) FROM tributes WHERE user_id = $1", [userId || req.user.id]);
-            if (parseInt(existingCount.rows[0].count) >= 1) {
-                return res.status(403).json({ error: "Free version limited to 1 memorial page. Please upgrade for more." });
-            }
-        }
+        // Free memorials can now be created indefinitely without a per-user limit.
 
         // Validation (basic)
         if (!name) return res.status(400).json({ error: "Name is required" });
 
-        // Defensively ensure status column exists
+        // Defensively ensure all required columns exist in tributes, media, and subscriptions tables
         try {
-            await pool.query("ALTER TABLE tributes ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'public'");
-        } catch (e) { /* already exists */ }
+            // Tributes table updates
+            await pool.query(`
+                ALTER TABLE tributes 
+                ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'public',
+                ADD COLUMN IF NOT EXISTS user_id INTEGER,
+                ADD COLUMN IF NOT EXISTS video_urls JSONB DEFAULT '[]',
+                ADD COLUMN IF NOT EXISTS is_anniversary_reminder VARCHAR(10) DEFAULT 'no',
+                ADD COLUMN IF NOT EXISTS reminder_options JSONB DEFAULT '[]',
+                ADD COLUMN IF NOT EXISTS grave_address TEXT,
+                ADD COLUMN IF NOT EXISTS grave_latitude DOUBLE PRECISION,
+                ADD COLUMN IF NOT EXISTS grave_longitude DOUBLE PRECISION,
+                ADD COLUMN IF NOT EXISTS show_grave_location BOOLEAN DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE
+            `);
+
+            // Media table updates
+            await pool.query(`
+                ALTER TABLE media 
+                ADD COLUMN IF NOT EXISTS user_id INTEGER,
+                ADD COLUMN IF NOT EXISTS alt_text TEXT,
+                ADD COLUMN IF NOT EXISTS title TEXT,
+                ADD COLUMN IF NOT EXISTS caption TEXT,
+                ADD COLUMN IF NOT EXISTS description TEXT
+            `);
+
+            // Subscriptions table updates (needed for linking memorials to payments)
+            await pool.query(`
+                ALTER TABLE subscriptions 
+                ADD COLUMN IF NOT EXISTS memorial_id INTEGER,
+                ADD COLUMN IF NOT EXISTS memorial_name TEXT,
+                ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'de'
+            `);
+        } catch (e) { 
+            console.error("Defensive migration error:", e.message);
+        }
 
         // Upload images if they are base64
         let photoUrl = photo;
@@ -1320,14 +1621,16 @@ app.post('/api/tributes', authenticateToken, async (req, res) => {
             }
         } catch (uploadErr) {
             console.error("Upload Failed during memorial creation:", uploadErr.message);
-            // Optional: fallback to base64 if upload completely fails?
-            // Actually better to keep the base64 if it's already there? No, user wants folders.
-            // But we already have the base64, so it stays in the DB if we don't update it.
         }
 
         const newTribute = await pool.query(
-            "INSERT INTO tributes (name, dates, birth_date, passing_date, bio, photo_url, cover_url, slug, user_id, video_urls, status) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
-            [name, dates, birthDate, passingDate, bio, photoUrl, finalCoverUrl || null, slug, userId || null, JSON.stringify(videoUrls || []), status || 'public']
+            "INSERT INTO tributes (name, dates, birth_date, passing_date, bio, photo_url, cover_url, slug, user_id, video_urls, status, is_anniversary_reminder, reminder_options, grave_address, grave_latitude, grave_longitude, show_grave_location) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *",
+            [
+                name, dates, birthDate, passingDate, bio, photoUrl, finalCoverUrl || null, slug, userId || null, 
+                JSON.stringify(videoUrls || []), status || 'public', isAnniversaryReminder || 'no', 
+                JSON.stringify(reminderOptions || []), graveAddress, graveLatitude, graveLongitude, 
+                showGraveLocation !== undefined ? showGraveLocation : true
+            ]
         );
         const tributeId = newTribute.rows[0].id;
 
@@ -1348,6 +1651,42 @@ app.post('/api/tributes', authenticateToken, async (req, res) => {
         }
 
         console.log("Database Insert Success:", tributeId);
+        if (isAnniversaryReminder === 'yes') {
+            console.log(`⏰ Anniversary reminders enabled for [${tributeId}] with options: ${reminderOptions.join(', ')}`);
+        }
+
+        // Send notification email
+        try {
+            const ownerId = userId || req.user?.id;
+            if (ownerId) {
+                const userRes = await pool.query("SELECT email, username FROM users WHERE id = $1", [ownerId]);
+                if (userRes.rows.length > 0) {
+                    const owner = userRes.rows[0];
+                    const siteUrl = process.env.SITE_URL || 'http://localhost:5173';
+                    const memorialLink = `${siteUrl}/memorial/${slug}`;
+                    
+                    // Determine template based on plan type
+                    let templateSlug = 'free_memorial_creation';
+                    if (isPaidDraft || (selectedPackage && selectedPackage !== 'free')) {
+                        if (String(selectedPackage).toLowerCase().includes('corporate')) {
+                            templateSlug = 'corporate_memorial_creation';
+                        } else {
+                            templateSlug = 'premium_memorial_creation';
+                        }
+                    }
+
+                    await sendTemplatedEmail(owner.email, templateSlug, {
+                        user_name: owner.username,
+                        memorial_name: name,
+                        memorial_link: memorialLink,
+                        header_title: 'Memorial Created'
+                    });
+                    console.log(`📧 Memorial creation email (${templateSlug}) sent to ${owner.email}`);
+                }
+            }
+        } catch (mailErr) {
+            console.error("Memorial creation email failed:", mailErr.message);
+        }
         res.json(mapTribute(newTribute.rows[0], req));
     } catch (err) {
         console.error("Database Insert Error:", err.message);
@@ -1418,6 +1757,14 @@ app.put('/api/tributes/:id', authenticateToken, async (req, res) => {
         if (updates.coverUrl !== undefined) { fields.push(`cover_url = $${queryIndex++}`); values.push(updates.coverUrl); }
         if (updates.videoUrls !== undefined) { fields.push(`video_urls = $${queryIndex++}`); values.push(JSON.stringify(updates.videoUrls || [])); }
         if (updates.status !== undefined) { fields.push(`status = $${queryIndex++}`); values.push(updates.status); }
+        if (updates.isAnniversaryReminder !== undefined) { fields.push(`is_anniversary_reminder = $${queryIndex++}`); values.push(updates.isAnniversaryReminder); }
+        if (updates.reminderOptions !== undefined) { fields.push(`reminder_options = $${queryIndex++}`); values.push(JSON.stringify(updates.reminderOptions || [])); }
+        
+        // Add Grave Location fields
+        if (updates.graveAddress !== undefined) { fields.push(`grave_address = $${queryIndex++}`); values.push(updates.graveAddress); }
+        if (updates.graveLatitude !== undefined) { fields.push(`grave_latitude = $${queryIndex++}`); values.push(updates.graveLatitude); }
+        if (updates.graveLongitude !== undefined) { fields.push(`grave_longitude = $${queryIndex++}`); values.push(updates.graveLongitude); }
+        if (updates.showGraveLocation !== undefined) { fields.push(`show_grave_location = $${queryIndex++}`); values.push(updates.showGraveLocation); }
 
         if (fields.length > 0) {
             const query = `UPDATE tributes SET ${fields.join(', ')} WHERE id = $${queryIndex}`;
@@ -1472,12 +1819,47 @@ app.delete('/api/tributes/:id', authenticateToken, async (req, res) => {
 app.post('/api/tributes/:id/comments', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, text } = req.body;
+        const { name, text, email, image } = req.body;
+
+        try {
+            await pool.query("ALTER TABLE comments ADD COLUMN IF NOT EXISTS image_url TEXT");
+            await pool.query("ALTER TABLE comments ADD COLUMN IF NOT EXISTS email TEXT");
+        } catch (e) { /* already exists */ }
+
+        let imageUrl = null;
+        if (image && image.startsWith('data:')) {
+            try {
+                imageUrl = await handleMediaUpload(image, `comment_image_${id}_${Date.now()}`);
+            } catch (err) { console.error("Comment image upload failed:", err); }
+        }
+
         const newComment = await pool.query(
-            "INSERT INTO comments (tribute_id, name, content) VALUES($1, $2, $3) RETURNING *",
-            [id, name, text]
+            "INSERT INTO comments (tribute_id, name, content, email, image_url) VALUES($1, $2, $3, $4, $5) RETURNING *",
+            [id, name, text, email || null, imageUrl]
         );
-        res.json(newComment.rows[0]);
+
+        // Also add to Media Library so it shows up in admin
+        if (imageUrl) {
+            try {
+                // Get user_id from the memorial to associate the media
+                const tributeInfo = await pool.query("SELECT user_id FROM tributes WHERE id = $1", [id]);
+                const authorId = tributeInfo.rows[0]?.user_id || null;
+
+                await pool.query(
+                    "INSERT INTO media (tribute_id, user_id, type, url, alt_text) VALUES ($1, $2, 'image', $3, $4)",
+                    [id, authorId, 'image', imageUrl, `Comment Image from ${name}`]
+                );
+            } catch (mediaErr) {
+                console.error("Failed to add comment image to media library:", mediaErr.message);
+            }
+        }
+
+        res.json({
+            ...newComment.rows[0],
+            imageUrl: formatMediaUrl(imageUrl, req),
+            text: newComment.rows[0].content, // for consistency
+            date: new Date(newComment.rows[0].created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        });
     } catch (err) {
         console.error(err.message);
         res.status(500).send("Server Error");
@@ -1562,7 +1944,11 @@ app.get('/api/comments', async (req, res) => {
             JOIN tributes t ON c.tribute_id = t.id 
             ORDER BY c.created_at DESC
         `);
-        res.json(result.rows);
+        const formatted = result.rows.map(row => ({
+            ...row,
+            imageUrl: formatMediaUrl(row.image_url, req)
+        }));
+        res.json(formatted);
     } catch (err) {
         console.error(err.message);
         res.status(500).send("Server Error");
@@ -1583,12 +1969,33 @@ app.delete('/api/comments/:id', authenticateToken, isAdmin, async (req, res) => 
 app.put('/api/comments/:id', authenticateToken, isAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, content } = req.body;
+        let { name, content, email, imageUrl, image } = req.body;
+
+        // If new base64 image provided
+        if (image && image.startsWith('data:')) {
+            try {
+                // Get tribute_id for this comment to associate with media
+                const commentRes = await pool.query("SELECT tribute_id FROM comments WHERE id = $1", [id]);
+                const tributeId = commentRes.rows[0]?.tribute_id;
+
+                imageUrl = await handleMediaUpload(image, `comment_image_edit_${id}_${Date.now()}`);
+
+                if (tributeId) {
+                    const tributeInfo = await pool.query("SELECT user_id FROM tributes WHERE id = $1", [tributeId]);
+                    const authorId = tributeInfo.rows[0]?.user_id || null;
+                    await pool.query(
+                        "INSERT INTO media (tribute_id, user_id, type, url, alt_text) VALUES ($1, $2, 'image', $3, $4)",
+                        [tributeId, authorId, 'image', imageUrl, `Comment Image (Updated) from ${name}`]
+                    );
+                }
+            } catch (err) { console.error("Edit Comment image upload failed:", err); }
+        }
+
         await pool.query(
-            "UPDATE comments SET name = $1, content = $2 WHERE id = $3",
-            [name, content, id]
+            "UPDATE comments SET name = $1, content = $2, email = $3, image_url = $4 WHERE id = $5",
+            [name, content, email || null, imageUrl || null, id]
         );
-        res.json({ message: "Comment updated" });
+        res.json({ message: "Comment updated", imageUrl });
     } catch (err) {
         console.error(err.message);
         res.status(500).send("Server Error");
@@ -1600,17 +2007,34 @@ app.post('/api/tributes/:id/media', authenticateToken, async (req, res) => {
         const { id } = req.params;
         let { type, url } = req.body;
 
-        // LIMITS: Max 5 images, NO videos for free version (Skip for Admin)
+        // LIMITS Check (SKIP for Admin or Premium memorial owners)
         const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
-
+        
+        let isPremiumMemorial = false;
         if (!isPrivileged) {
+            // Check if this memorial belongs to a premium subscription
+            const subCheck = await pool.query(`
+                SELECT p.name as product_name 
+                FROM subscriptions s 
+                JOIN products p ON s.product_id = p.id 
+                WHERE s.memorial_id = $1 AND s.status = 'active'
+            `, [id]);
+            
+            isPremiumMemorial = subCheck.rows.length > 0 && 
+                                !subCheck.rows[0].product_name.toLowerCase().includes('free');
+        }
+
+        if (!isPrivileged && !isPremiumMemorial) {
             if (type === 'video') {
-                return res.status(403).json({ error: "Video uploads are not available in the free version." });
+                return res.status(403).json({ error: "Video links are not available in the free version. Please upgrade to Premium." });
+            }
+            if (type === 'document') {
+                return res.status(403).json({ error: "Documents are not available in the free version. Please upgrade to Premium." });
             }
 
             const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [id]);
-            if (parseInt(countRes.rows[0].count) >= 5) {
-                return res.status(403).json({ error: "Free version limited to 5 images per memorial." });
+            if (parseInt(countRes.rows[0].count) >= 10) {
+                return res.status(403).json({ error: "Free memorials are limited to 10 images. Please upgrade to Premium for unlimited storage." });
             }
         }
 
@@ -1696,12 +2120,28 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
         const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
 
         if (tribute_id && !isPrivileged) {
-            if (type === 'video') {
-                return res.status(403).json({ error: "Video uploads restricted." });
-            }
-            const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [tribute_id]);
-            if (parseInt(countRes.rows[0].count) >= 5) {
-                return res.status(403).json({ error: "Limit of 5 images reached." });
+            // Check if memorial has a premium plan
+            const planRes = await pool.query(`
+                SELECT p.name as product_name 
+                FROM subscriptions s 
+                JOIN products p ON s.product_id = p.id 
+                WHERE s.memorial_id = $1 AND s.status = 'active'
+            `, [tribute_id]);
+            
+            const isPremium = planRes.rows.length > 0 && 
+                              !planRes.rows[0].product_name.toLowerCase().includes('free');
+
+            if (!isPremium) {
+                if (type === 'video') {
+                    return res.status(403).json({ error: "Video uploads are restricted in the free version. Please upgrade to Premium." });
+                }
+                if (type === 'document') {
+                    return res.status(403).json({ error: "Document uploads are restricted in the free version. Please upgrade to Premium." });
+                }
+                const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [tribute_id]);
+                if (parseInt(countRes.rows[0].count) >= 10) {
+                    return res.status(403).json({ error: "Free version is limited to 10 images. Please upgrade to Premium for unlimited uploads." });
+                }
             }
         }
 
@@ -1712,6 +2152,15 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
             "INSERT INTO media (type, url, tribute_id, user_id) VALUES ($1, $2, $3, $4) RETURNING *",
             [type || 'image', relativePath, tribute_id || null, req.user.id]
         );
+
+        // Synchronize main tribute photo/cover columns if necessary
+        if (tribute_id) {
+            if (type === 'photo') {
+                await pool.query("UPDATE tributes SET photo_url = $1 WHERE id = $2", [relativePath, tribute_id]);
+            } else if (type === 'cover') {
+                await pool.query("UPDATE tributes SET cover_url = $1 WHERE id = $2", [relativePath, tribute_id]);
+            }
+        }
 
         const row = result.rows[0];
         row.url = formatMediaUrl(row.url, req);
@@ -1757,16 +2206,29 @@ app.get('/api/media', authenticateToken, hasPermission('media'), async (req, res
 app.post('/api/media', authenticateToken, async (req, res) => {
     try {
         let { type, url, tribute_id, userId } = req.body;
+        const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
 
         // LIMITS: Max 5 images, NO videos for free version (if linked to tribute)
-        if (tribute_id) {
-            if (type === 'video') {
-                return res.status(403).json({ error: "Video uploads are not available in the free version." });
-            }
+        if (tribute_id && !isPrivileged) {
+            const planRes = await pool.query(`
+                SELECT p.name as product_name 
+                FROM subscriptions s 
+                JOIN products p ON s.product_id = p.id 
+                WHERE s.memorial_id = $1 AND s.status = 'active'
+            `, [tribute_id]);
+            
+            const isPremium = planRes.rows.length > 0 && 
+                              !planRes.rows[0].product_name.toLowerCase().includes('free');
 
-            const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [tribute_id]);
-            if (parseInt(countRes.rows[0].count) >= 5) {
-                return res.status(403).json({ error: "Free version limited to 5 images per memorial." });
+            if (!isPremium) {
+                if (type === 'video') {
+                    return res.status(403).json({ error: "Video uploads are not available in the free version. Please upgrade." });
+                }
+
+                const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [tribute_id]);
+                if (parseInt(countRes.rows[0].count) >= 10) {
+                    return res.status(403).json({ error: "Free version limited to 10 images per memorial." });
+                }
             }
         }
 
@@ -1882,9 +2344,8 @@ app.get('/api/pages', async (req, res) => {
 
 app.post('/api/pages', authenticateToken, hasPermission('pages'), async (req, res) => {
     try {
-        let { title, content, slug, status, seo_title, seo_description, seo_keywords, og_image } = req.body;
+        let { title, content, slug, status, seo_title, seo_description, seo_keywords, og_image, translations } = req.body;
 
-        // Upload page og_image if base64
         if (og_image && og_image.startsWith('data:')) {
             try {
                 og_image = await handleMediaUpload(og_image, `page_og_${slug || Date.now()}`);
@@ -1892,8 +2353,8 @@ app.post('/api/pages', authenticateToken, hasPermission('pages'), async (req, re
         }
 
         const result = await pool.query(
-            "INSERT INTO pages (title, content, slug, status, seo_title, seo_description, seo_keywords, og_image) VALUES($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
-            [title, content, slug, status || 'published', seo_title, seo_description, seo_keywords, og_image]
+            "INSERT INTO pages (title, content, slug, status, seo_title, seo_description, seo_keywords, og_image, translations) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
+            [title, content, slug, status || 'published', seo_title, seo_description, seo_keywords, og_image, JSON.stringify(translations || {})]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -1905,19 +2366,17 @@ app.post('/api/pages', authenticateToken, hasPermission('pages'), async (req, re
 app.put('/api/pages/:id', authenticateToken, hasPermission('pages'), async (req, res) => {
     try {
         const { id } = req.params;
-        let { title, content, slug, status, seo_title, seo_description, seo_keywords, og_image } = req.body;
+        let { title, content, slug, status, seo_title, seo_description, seo_keywords, og_image, translations } = req.body;
 
-        // Upload page og_image if base64
         if (og_image && og_image.startsWith('data:')) {
             try {
                 og_image = await handleMediaUpload(og_image, `page_og_${id}_${Date.now()}`);
             } catch (uploadErr) { console.error("Upload Failed for page update og_image:", uploadErr); }
         }
 
-        console.log(`Updating page ${id}: ${title}`);
         const result = await pool.query(
-            "UPDATE pages SET title = $1, content = $2, slug = $3, status = $4, seo_title = $5, seo_description = $6, seo_keywords = $7, og_image = $8, updated_at = CURRENT_TIMESTAMP WHERE id = $9 RETURNING *",
-            [title, content, slug, status || 'published', seo_title, seo_description, seo_keywords, og_image, id]
+            "UPDATE pages SET title = $1, content = $2, slug = $3, status = $4, seo_title = $5, seo_description = $6, seo_keywords = $7, og_image = $8, translations = $9, updated_at = CURRENT_TIMESTAMP WHERE id = $10 RETURNING *",
+            [title, content, slug, status || 'published', seo_title, seo_description, seo_keywords, og_image, JSON.stringify(translations || {}), id]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -1955,9 +2414,8 @@ app.get('/api/posts', async (req, res) => {
 
 app.post('/api/posts', authenticateToken, hasPermission('posts'), async (req, res) => {
     try {
-        let { title, content, slug, status, featured_image, categories, tags, seo_title, seo_description, seo_keywords, og_image } = req.body;
+        let { title, content, slug, status, featured_image, categories, tags, seo_title, seo_description, seo_keywords, og_image, translations } = req.body;
 
-        // Upload post images if base64
         try {
             if (featured_image && featured_image.startsWith('data:')) {
                 featured_image = await handleMediaUpload(featured_image, `post_featured_${slug || Date.now()}`);
@@ -1968,8 +2426,8 @@ app.post('/api/posts', authenticateToken, hasPermission('posts'), async (req, re
         } catch (uploadErr) { console.error("Upload Failed for post images:", uploadErr); }
 
         const result = await pool.query(
-            "INSERT INTO posts (title, content, slug, status, featured_image, categories, tags, seo_title, seo_description, seo_keywords, og_image) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
-            [title, content, slug, status || 'published', featured_image, JSON.stringify(categories || []), JSON.stringify(tags || []), seo_title, seo_description, seo_keywords, og_image]
+            "INSERT INTO posts (title, content, slug, status, featured_image, categories, tags, seo_title, seo_description, seo_keywords, og_image, translations) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *",
+            [title, content, slug, status || 'published', featured_image, JSON.stringify(categories || []), JSON.stringify(tags || []), seo_title, seo_description, seo_keywords, og_image, JSON.stringify(translations || {})]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -1981,9 +2439,8 @@ app.post('/api/posts', authenticateToken, hasPermission('posts'), async (req, re
 app.put('/api/posts/:id', authenticateToken, hasPermission('posts'), async (req, res) => {
     try {
         const { id } = req.params;
-        let { title, content, slug, status, featured_image, categories, tags, seo_title, seo_description, seo_keywords, og_image } = req.body;
+        let { title, content, slug, status, featured_image, categories, tags, seo_title, seo_description, seo_keywords, og_image, translations } = req.body;
 
-        // Upload post images if base64
         try {
             if (featured_image && featured_image.startsWith('data:')) {
                 featured_image = await handleMediaUpload(featured_image, `post_featured_${id}_${Date.now()}`);
@@ -1993,10 +2450,9 @@ app.put('/api/posts/:id', authenticateToken, hasPermission('posts'), async (req,
             }
         } catch (uploadErr) { console.error("Upload Failed for post update images:", uploadErr); }
 
-        console.log(`Updating post ${id}: ${title}`);
         const result = await pool.query(
-            "UPDATE posts SET title = $1, content = $2, slug = $3, status = $4, featured_image = $5, categories = $6, tags = $7, seo_title = $8, seo_description = $9, seo_keywords = $10, og_image = $11, updated_at = CURRENT_TIMESTAMP WHERE id = $12 RETURNING *",
-            [title, content, slug, status || 'published', featured_image, JSON.stringify(categories || []), JSON.stringify(tags || []), seo_title, seo_description, seo_keywords, og_image, id]
+            "UPDATE posts SET title = $1, content = $2, slug = $3, status = $4, featured_image = $5, categories = $6, tags = $7, seo_title = $8, seo_description = $9, seo_keywords = $10, og_image = $11, translations = $12, updated_at = CURRENT_TIMESTAMP WHERE id = $13 RETURNING *",
+            [title, content, slug, status || 'published', featured_image, JSON.stringify(categories || []), JSON.stringify(tags || []), seo_title, seo_description, seo_keywords, og_image, JSON.stringify(translations || {}), id]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -2345,12 +2801,13 @@ app.get('/api/subscriptions/my', authenticateToken, async (req, res) => {
                     status: 'active',
                     product_id: null,
                     product_name: 'Free Memorial',
-                    is_lifetime: true,
+                    is_lifetime: false,
                     memorial_name: t.name,
                     memorial_id: t.id,
                     created_at: t.created_at,
-                    trial_start: null,
-                    trial_end: null,
+                    trial_start: t.created_at,
+                    trial_end: new Date(new Date(t.created_at).setFullYear(new Date(t.created_at).getFullYear() + 10)),
+                    paid_end: new Date(new Date(t.created_at).setFullYear(new Date(t.created_at).getFullYear() + 10)),
                     _virtual: true
                 });
             }
@@ -2400,8 +2857,12 @@ app.post('/api/subscriptions/renew', authenticateToken, async (req, res) => {
 
         // Update or create subscription - specifically for this memorial if provided
         let existing = { rows: [] };
-        if (subscription_id) {
-            existing = await pool.query('SELECT id FROM subscriptions WHERE user_id = $1 AND id = $2', [userId, subscription_id]);
+        
+        // If it's a virtual ID (starting with m-), treat it as a memorial-based lookup
+        const cleanSubId = (subscription_id && String(subscription_id).startsWith('m-')) ? null : subscription_id;
+
+        if (cleanSubId) {
+            existing = await pool.query('SELECT id FROM subscriptions WHERE user_id = $1 AND id = $2', [userId, cleanSubId]);
         } else if (memorial_id) {
             existing = await pool.query('SELECT id FROM subscriptions WHERE user_id = $1 AND memorial_id = $2', [userId, memorial_id]);
         } else {
@@ -2843,13 +3304,20 @@ app.get('/api/subscriptions', authenticateToken, hasPermission('subscriptions'),
                     status: 'active',
                     product_id: null,
                     product_name: 'Free Memorial',
-                    is_lifetime: true,
+                    is_lifetime: false,
                     memorial_name: t.name,
                     memorial_id: t.id,
                     created_at: t.created_at,
+                    trial_start: t.created_at,
+                    trial_end: new Date(new Date(t.created_at).setFullYear(new Date(t.created_at).getFullYear() + 10)),
+                    paid_end: new Date(new Date(t.created_at).setFullYear(new Date(t.created_at).getFullYear() + 10)),
                     _virtual: true,
                     memorials_count: 1,
-                    memorials_list: [{ id: t.id, name: t.name }]
+                    memorials_list: [{ 
+                        id: t.id, 
+                        name: t.name, 
+                        paid_end: new Date(new Date(t.created_at).setFullYear(new Date(t.created_at).getFullYear() + 10)) 
+                    }]
                 });
             }
         }
@@ -2877,7 +3345,7 @@ app.get('/api/subscriptions/user/:userId', authenticateToken, hasPermission('sub
             ORDER BY s.created_at DESC LIMIT 1
         `, [userId]);
 
-        const userRes = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [userId]);
+        const userRes = await pool.query('SELECT id, username, email, role FROM users WHERE id = $1', [userId]);
         const memorialsRes = await pool.query('SELECT id, name, slug, photo_url, created_at FROM tributes WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
         const memorials = memorialsRes.rows;
         let subscription = result.rows[0] || null;
@@ -2887,11 +3355,14 @@ app.get('/api/subscriptions/user/:userId', authenticateToken, hasPermission('sub
             subscription = {
                 id: null,
                 status: 'active',
-                is_lifetime: true,
-                product_name: 'Tributoo Subscription (Memorial)',
+                is_lifetime: false,
+                product_name: 'Free Memorial',
                 memorial_name: latest.name,
                 memorial_id: latest.id,
                 created_at: latest.created_at,
+                trial_start: latest.created_at,
+                trial_end: new Date(new Date(latest.created_at).setFullYear(new Date(latest.created_at).getFullYear() + 10)),
+                paid_end: new Date(new Date(latest.created_at).setFullYear(new Date(latest.created_at).getFullYear() + 10)),
                 _linked_via_memorial: true
             };
         }
@@ -3050,15 +3521,21 @@ const shouldSendEmail = (template, referenceDate = new Date()) => {
     return true;
 };
 
-// ── Send one-time Scheduled emails ────────────────────────────────────────────
+// Run scheduled job for broadcast templates ONLY
+let isSendingTemplates = false;
 const sendScheduledTemplates = async () => {
+    if (isSendingTemplates) return;
+    isSendingTemplates = true;
     try {
         // Find templates set to 'scheduled' whose time has now passed (send once — mark as sent)
         const scheduledRes = await pool.query(
             `SELECT * FROM email_templates WHERE timing_type = 'scheduled' AND timing_scheduled_at IS NOT NULL AND timing_scheduled_at <= NOW() AND (timing_sent IS NULL OR timing_sent = FALSE)`
         );
         // If timing_sent column doesn't exist yet, silently skip
-        if (scheduledRes.rows.length === 0) return;
+        if (scheduledRes.rows.length === 0) {
+            isSendingTemplates = false;
+            return;
+        }
 
         // Get all active/trial users to broadcast to
         const users = await pool.query(`SELECT id, email, username FROM users`);
@@ -3077,18 +3554,496 @@ const sendScheduledTemplates = async () => {
         }
     } catch (e) {
         // Column might not exist yet — safe to skip
+    } finally {
+        isSendingTemplates = false;
     }
 };
 
 // checkSubscriptions removed as trials are no longer used.
 
 // Run scheduled job for broadcast templates ONLY
+let isCheckingReminders = false;
+
+const checkAbandonedCheckoutReminders = async () => {
+    try {
+        const result = await pool.query(`
+            SELECT id, customer_email, customer_name, stripe_payment_intent_id
+            FROM orders
+            WHERE status = 'pending' 
+              AND reminder_sent = FALSE 
+              AND created_at < NOW() - INTERVAL '1 hour'
+              AND created_at > NOW() - INTERVAL '24 hours'
+            LIMIT 50
+        `);
+
+        for (const row of result.rows) {
+            try {
+                const siteUrl = process.env.SITE_URL || 'https://www.tributoo.de';
+                await sendTemplatedEmail(row.customer_email, 'abandoned_checkout_reminder', {
+                    user_name: row.customer_name || 'Customer',
+                    checkout_link: `${siteUrl}/checkout`,
+                    header_title: 'Unfinished Order'
+                });
+
+                await pool.query("UPDATE orders SET reminder_sent = TRUE WHERE id = $1", [row.id]);
+                console.log(`📧 Abandoned checkout reminder sent to ${row.customer_email}`);
+            } catch (err) {
+                console.error(`Failed to send abandoned reminder for order ${row.id}:`, err.message);
+            }
+        }
+
+        // Also check abandoned carts (items added but never reached checkout)
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS abandoned_carts (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    items JSONB NOT NULL DEFAULT '[]',
+                    reminder_sent BOOLEAN DEFAULT FALSE,
+                    converted BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id)
+                )
+            `);
+
+            const cartResult = await pool.query(`
+                SELECT ac.id, ac.user_id, ac.items, u.email, u.username
+                FROM abandoned_carts ac
+                JOIN users u ON ac.user_id = u.id
+                WHERE ac.reminder_sent = FALSE
+                  AND ac.converted = FALSE
+                  AND ac.items != '[]'::jsonb
+                  AND ac.updated_at < NOW() - INTERVAL '1 hour'
+                  AND ac.updated_at > NOW() - INTERVAL '48 hours'
+                LIMIT 50
+            `);
+
+            const siteUrl = process.env.SITE_URL || 'https://www.tributoo.de';
+            for (const row of cartResult.rows) {
+                try {
+                    const items = Array.isArray(row.items) ? row.items : [];
+                    const itemList = items.map(i => `<li><strong>${i.name}</strong> x${i.quantity}</li>`).join('');
+                    await sendTemplatedEmail(row.email, 'abandoned_cart_reminder', {
+                        user_name: row.username || 'Customer',
+                        cart_items_list: `<ul>${itemList}</ul>`,
+                        checkout_link: `${siteUrl}/cart`,
+                        header_title: 'You left something behind'
+                    });
+                    await pool.query(
+                        `UPDATE abandoned_carts SET reminder_sent = TRUE WHERE id = $1`,
+                        [row.id]
+                    );
+                    console.log(`📧 Abandoned cart reminder sent to ${row.email}`);
+                } catch (err) {
+                    console.error(`Failed to send abandoned cart reminder for user ${row.user_id}:`, err.message);
+                }
+            }
+        } catch (cartErr) {
+            console.error('Abandoned cart check error:', cartErr.message);
+        }
+    } catch (err) {
+        console.error("Error in checkAbandonedCheckoutReminders:", err.message);
+    }
+};
+
+/**
+ * Weekly/Daily background task to remind users with incomplete (draft) memorials
+ * Condition: 'draft' status AND no reminder_sent yet AND older than 24h
+ */
+const checkIncompleteMemorialReminders = async () => {
+    try {
+        const result = await pool.query(`
+            SELECT t.id, t.name, t.slug, u.email, u.username
+            FROM tributes t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.status = 'draft' 
+              AND t.reminder_sent = FALSE 
+              AND t.created_at < NOW() - INTERVAL '24 hours'
+            LIMIT 50
+        `);
+
+        for (const row of result.rows) {
+            try {
+                const siteUrl = process.env.SITE_URL || 'https://www.tributoo.de';
+                const dashboardLink = `${siteUrl}/admin/memorials`;
+                
+                await sendTemplatedEmail(row.email, 'incomplete_memorial_reminder', {
+                    user_name: row.username,
+                    memorial_name: row.name || 'your memorial',
+                    dashboard_link: dashboardLink,
+                    header_title: 'Draft Reminder'
+                });
+
+                // Mark as sent so we don't spam
+                await pool.query("UPDATE tributes SET reminder_sent = TRUE WHERE id = $1", [row.id]);
+                console.log(`📧 Incomplete memorial reminder sent to ${row.email} for memorial [${row.id}]`);
+            } catch (mailErr) {
+                console.error(`Failed to send reminder for memorial ${row.id}:`, mailErr.message);
+            }
+        }
+    } catch (err) {
+        console.error("Error in checkIncompleteMemorialReminders:", err.message);
+    }
+};
+
+const checkAnniversaryReminders = async () => {
+    if (isCheckingReminders) return;
+    isCheckingReminders = true;
+
+    try {
+        const now = new Date();
+        // Today string in YYYY-MM-DD format based on local time
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+        // Get all tributes with reminders enabled
+        const tributesRes = await pool.query(`
+            SELECT t.id, t.name, t.passing_date, t.slug, t.reminder_options, u.email, u.username
+            FROM tributes t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.is_anniversary_reminder = 'yes' AND t.passing_date IS NOT NULL
+        `);
+
+        for (const tribute of tributesRes.rows) {
+            const passingDate = new Date(tribute.passing_date);
+            // Use local dates for calculation to match todayStr
+            const anniversaryDate = new Date(now.getFullYear(), passingDate.getMonth(), passingDate.getDate());
+            
+            const intervals = Array.isArray(tribute.reminder_options) ? tribute.reminder_options : [];
+            
+            for (const interval of intervals) {
+                let targetDate = new Date(anniversaryDate);
+
+                if (interval === 'one_month' || interval === 'month') targetDate.setMonth(targetDate.getMonth() - 1);
+                else if (interval === 'one_week' || interval === 'week') targetDate.setDate(targetDate.getDate() - 7);
+                else if (interval === 'one_day' || interval === 'day') targetDate.setDate(targetDate.getDate() - 1);
+
+                const targetStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+
+                if (targetStr === todayStr) {
+                    // Optimized check: Use template_slug and subject match with LIMIT 1
+                    // Fix: Use 'sent_at' instead of 'created_at' to match actual schema
+                    const checkSent = await pool.query(
+                        "SELECT id FROM email_logs WHERE recipient_email = $1 AND template_slug = 'anniversary_reminder' AND subject LIKE $2 AND sent_at > CURRENT_DATE LIMIT 1",
+                        [tribute.email, `%${tribute.name}%`]
+                    );
+
+                    if (checkSent.rows.length === 0) {
+                        try {
+                            const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+                            await sendTemplatedEmail(tribute.email, 'anniversary_reminder', {
+                                user_name: tribute.username,
+                                memorial_name: tribute.name,
+                                anniversary_date: anniversaryDate.toLocaleDateString('de-CH'),
+                                memorial_link: `${siteUrl}/memorial/${tribute.slug}`,
+                                header_title: 'Remembrance'
+                            });
+                            console.log(`✅ Anniversary reminder [${interval}] sent to ${tribute.email} for ${tribute.name}`);
+                        } catch (e) {
+                            console.error(`Failed to send anniversary reminder to ${tribute.email}:`, e.message);
+                        }
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Error in checkAnniversaryReminders:", err.message);
+    } finally {
+        isCheckingReminders = false;
+    }
+};
+
+// Run scheduled jobs
 setInterval(() => {
     sendScheduledTemplates();
+    checkAnniversaryReminders();
 }, 60 * 1000);
+
+// Run incomplete memorial reminders every 6 hours
+setInterval(() => {
+    checkIncompleteMemorialReminders();
+    checkAbandonedCheckoutReminders();
+}, 6 * 60 * 60 * 1000);
 
 // Also run on server start
 sendScheduledTemplates();
+checkAnniversaryReminders();
+checkIncompleteMemorialReminders();
+checkAbandonedCheckoutReminders();
+
+// Ensure order_failed template exists
+(async () => {
+    try {
+        const exists = await pool.query(`SELECT id FROM email_templates WHERE slug = 'order_failed' LIMIT 1`);
+        if (exists.rows.length === 0) {
+            await pool.query(
+                `INSERT INTO email_templates (slug, name, subject, body, language, timing_type) VALUES ($1,$2,$3,$4,'en','immediate')`,
+                [
+                    'order_failed',
+                    'Order Processing Issue',
+                    'Action Required: Your Order Could Not Be Processed',
+                    `<p>Hi [user_name],</p>
+<p>We're sorry — your payment was received but we encountered an issue processing your order on our end.</p>
+<p style="background:#fff3cd;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:4px;font-size:13px;color:#92400e;">
+  <strong>Your payment has NOT been lost.</strong> Your card was charged but the order was not created due to a technical error.
+</p>
+<p>Please contact us and we will resolve this immediately:</p>
+<p><a href="mailto:[support_email]" style="color:#D4AF37;font-weight:bold;">[support_email]</a></p>
+<p style="font-size:12px;color:#9ca3af;">Reference: Payment ID <code>[payment_intent_id]</code></p>
+<p>We apologize for the inconvenience and will make this right as soon as possible.</p>
+<p>The Tributoo Team</p>`
+                ]
+            );
+            console.log('✅ Created order_failed email template');
+        }
+    } catch (e) {
+        console.error('order_failed template init error:', e.message);
+    }
+})();
+
+// Add translations column to pages and posts tables
+(async () => {
+    try {
+        await pool.query(`ALTER TABLE pages ADD COLUMN IF NOT EXISTS translations JSONB DEFAULT '{}'`);
+        await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS translations JSONB DEFAULT '{}'`);
+        console.log('✅ translations column ensured on pages and posts');
+    } catch (e) {
+        console.error('translations column migration error:', e.message);
+    }
+})();
+
+// Ensure order_confirmation template exists with detailed order layout
+(async () => {
+    try {
+        const detailedBody = `<p style="font-size:14px;color:#374151;margin-bottom:8px;">You've received the following order from <strong>[customer_full_name]</strong>:</p>
+<p style="margin-bottom:20px;"><a href="[site_url]/admin/orders" style="color:#D4AF37;font-weight:bold;text-decoration:underline;">[Order #[order_id]]</a> ([order_date])</p>
+[order_items_table]
+[order_subtotals_table]
+[subscription_info]
+[address_section]
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+<p style="font-size:13px;color:#6b7280;">Congratulations on the sale.<br>Process your orders on the go. <a href="[site_url]" style="color:#D4AF37;">Visit the site.</a></p>`;
+
+        const exists = await pool.query(`SELECT id FROM email_templates WHERE slug = 'order_confirmation' LIMIT 1`);
+        if (exists.rows.length === 0) {
+            await pool.query(
+                `INSERT INTO email_templates (slug, name, subject, body, language, timing_type) VALUES ($1,$2,$3,$4,'en','immediate')`,
+                ['order_confirmation', 'Order Confirmation', 'New Order: #[order_id]', detailedBody]
+            );
+            console.log('✅ Created order_confirmation email template');
+        } else {
+            await pool.query(
+                `UPDATE email_templates SET body = $1, subject = $2 WHERE slug = 'order_confirmation'`,
+                [detailedBody, 'New Order: #[order_id]']
+            );
+            console.log('✅ Updated order_confirmation email template');
+        }
+
+        // Restore payment_confirmation to simple format (used by subscription renew)
+        await pool.query(
+            `UPDATE email_templates SET body = $1, subject = $2 WHERE slug = 'payment_confirmation'`,
+            [
+                `<p>Hi [user_name],</p><p>We've received your payment [order_id_info].</p>[memorial_info]<p>Wishing you and your loved ones continued peace and remembrance,</p><p>The Tributoo Team</p>`,
+                'Payment Confirmation'
+            ]
+        );
+        console.log('✅ Restored payment_confirmation email template');
+    } catch (e) {
+        console.error('order_confirmation template init error:', e.message);
+    }
+})();
+
+// Insert/fix abandoned_cart_reminder email template
+(async () => {
+    try {
+        const correctBody = `<p>Hi [user_name],</p><p>You added items to your cart but didn't complete your purchase. Don't let them get away!</p>[cart_items_list]<p style="margin-top:20px"><a href="[checkout_link]" style="background:#D4AF37;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Complete Your Purchase</a></p>`;
+        const exists = await pool.query(`SELECT id, body FROM email_templates WHERE slug = 'abandoned_cart_reminder' LIMIT 1`);
+        if (exists.rows.length === 0) {
+            await pool.query(
+                `INSERT INTO email_templates (slug, name, subject, body, language, timing_type) VALUES ($1,$2,$3,$4,'en','delayed')`,
+                ['abandoned_cart_reminder', 'Abandoned Cart Reminder', 'You left something in your cart', correctBody]
+            );
+            console.log('✅ Inserted abandoned_cart_reminder email template');
+        } else if (exists.rows[0].body && exists.rows[0].body.includes('{{')) {
+            await pool.query(`UPDATE email_templates SET body = $1 WHERE slug = 'abandoned_cart_reminder'`, [correctBody]);
+            console.log('✅ Fixed abandoned_cart_reminder shortcode format');
+        }
+    } catch (e) {
+        console.error('Template init error:', e.message);
+    }
+})();
+
+// =============================================
+// SEO: robots.txt
+// =============================================
+app.get('/robots.txt', (req, res) => {
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    res.type('text/plain');
+    res.send(`User-agent: *
+Allow: /
+
+Sitemap: ${siteUrl}/sitemap.xml`);
+});
+
+// =============================================
+// SEO: sitemap.xml — lists all public pages
+// =============================================
+app.get('/sitemap.xml', async (req, res) => {
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    try {
+        const [memorials, posts, pages] = await Promise.all([
+            pool.query("SELECT slug, updated_at FROM tributes WHERE status = 'active' AND slug IS NOT NULL"),
+            pool.query("SELECT slug, updated_at FROM posts WHERE status = 'published' AND slug IS NOT NULL"),
+            pool.query("SELECT slug, updated_at FROM pages WHERE status = 'published' AND slug IS NOT NULL"),
+        ]);
+
+        const staticUrls = ['', '/blog', '/pricing', '/about', '/contact'].map(path => ({
+            loc: `${siteUrl}${path}`,
+            lastmod: new Date().toISOString().split('T')[0],
+            changefreq: 'weekly',
+            priority: path === '' ? '1.0' : '0.8',
+        }));
+
+        const memorialUrls = memorials.rows.map(r => ({
+            loc: `${siteUrl}/memorial/${r.slug}`,
+            lastmod: r.updated_at ? new Date(r.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            changefreq: 'monthly',
+            priority: '0.7',
+        }));
+
+        const postUrls = posts.rows.map(r => ({
+            loc: `${siteUrl}/blog/${r.slug}`,
+            lastmod: r.updated_at ? new Date(r.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            changefreq: 'monthly',
+            priority: '0.6',
+        }));
+
+        const pageUrls = pages.rows.map(r => ({
+            loc: `${siteUrl}/${r.slug}`,
+            lastmod: r.updated_at ? new Date(r.updated_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            changefreq: 'monthly',
+            priority: '0.6',
+        }));
+
+        const allUrls = [...staticUrls, ...memorialUrls, ...postUrls, ...pageUrls];
+
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${allUrls.map(u => `  <url>
+    <loc>${u.loc}</loc>
+    <lastmod>${u.lastmod}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+        res.header('Content-Type', 'application/xml');
+        res.send(xml);
+    } catch (e) {
+        console.error('Sitemap error:', e.message);
+        res.status(500).send('Sitemap generation failed');
+    }
+});
+
+// =============================================
+// SEO: Bot prerendering — serves full HTML with
+// meta tags for crawlers (Google, Facebook, etc.)
+// =============================================
+const BOT_AGENTS = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|exabot|facebot|facebookexternalhit|twitterbot|rogerbot|linkedinbot|embedly|quora|showyoubot|outbrain|pinterestbot|slackbot|vkShare|W3C_Validator|whatsapp|telegrambot|applebot|ia_archiver/i;
+
+const isBotRequest = (req) => BOT_AGENTS.test(req.headers['user-agent'] || '');
+
+const buildBotHtml = ({ title, description, image, url, type = 'website' }) => {
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    const safeTitle = (title || 'Tributoo - Digital Memorials').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeDesc = (description || 'Create everlasting digital memorials for your loved ones.').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeImage = image || `${siteUrl}/og-default.jpg`;
+    const safeUrl = url || siteUrl;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${safeTitle} | Tributoo</title>
+  <meta name="description" content="${safeDesc}" />
+  <meta property="og:type" content="${type}" />
+  <meta property="og:title" content="${safeTitle} | Tributoo" />
+  <meta property="og:description" content="${safeDesc}" />
+  <meta property="og:image" content="${safeImage}" />
+  <meta property="og:url" content="${safeUrl}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${safeTitle} | Tributoo" />
+  <meta name="twitter:description" content="${safeDesc}" />
+  <meta name="twitter:image" content="${safeImage}" />
+  <link rel="canonical" href="${safeUrl}" />
+</head>
+<body>
+  <h1>${safeTitle}</h1>
+  <p>${safeDesc}</p>
+</body>
+</html>`;
+};
+
+// Bot prerender: memorial pages
+app.get('/memorial/:slug', async (req, res, next) => {
+    if (!isBotRequest(req)) return next();
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    try {
+        const result = await pool.query(
+            "SELECT name, bio, photo_url, cover_url FROM tributes WHERE slug = $1 AND status = 'active'",
+            [req.params.slug]
+        );
+        if (!result.rows.length) return next();
+        const t = result.rows[0];
+        res.send(buildBotHtml({
+            title: t.name,
+            description: t.bio ? t.bio.replace(/<[^>]+>/g, '').substring(0, 160) : `Memorial page for ${t.name}`,
+            image: t.cover_url || t.photo_url,
+            url: `${siteUrl}/memorial/${req.params.slug}`,
+            type: 'profile',
+        }));
+    } catch (e) { next(); }
+});
+
+// Bot prerender: blog posts
+app.get('/blog/:slug', async (req, res, next) => {
+    if (!isBotRequest(req)) return next();
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    try {
+        const result = await pool.query(
+            "SELECT title, content, og_image, featured_image, seo_description FROM posts WHERE slug = $1 AND status = 'published'",
+            [req.params.slug]
+        );
+        if (!result.rows.length) return next();
+        const p = result.rows[0];
+        res.send(buildBotHtml({
+            title: p.title,
+            description: p.seo_description || (p.content ? p.content.replace(/<[^>]+>/g, '').substring(0, 160) : ''),
+            image: p.og_image || p.featured_image,
+            url: `${siteUrl}/blog/${req.params.slug}`,
+            type: 'article',
+        }));
+    } catch (e) { next(); }
+});
+
+// Bot prerender: custom pages
+app.get('/page/:slug', async (req, res, next) => {
+    if (!isBotRequest(req)) return next();
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    try {
+        const result = await pool.query(
+            "SELECT title, content, og_image, seo_description FROM pages WHERE slug = $1 AND status = 'published'",
+            [req.params.slug]
+        );
+        if (!result.rows.length) return next();
+        const p = result.rows[0];
+        res.send(buildBotHtml({
+            title: p.title,
+            description: p.seo_description || (p.content ? p.content.replace(/<[^>]+>/g, '').substring(0, 160) : ''),
+            image: p.og_image,
+            url: `${siteUrl}/${req.params.slug}`,
+        }));
+    } catch (e) { next(); }
+});
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -3100,11 +4055,28 @@ app.use((err, req, res, next) => {
     res.status(500).send("Internal Server Error: " + err.message);
 });
 
-// Root route (for Render health check / browser test)
-app.get("/", (req, res) => {
-    res.send("🚀 Tributoo Backend is Running Successfully");
-});
+// =============================================
+// Serve React frontend build + SPA fallback
+// Must be AFTER all API and bot prerender routes
+// =============================================
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const distPath = path.join(__dirname, '..', 'dist');
 
+if (fs.existsSync(distPath)) {
+    // Serve static files (JS, CSS, images)
+    app.use(express.static(distPath));
+
+    // SPA fallback — all non-API routes return index.html
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+    console.log('✅ Serving React frontend from dist/');
+} else {
+    // Health check when dist not built yet
+    app.get('/', (req, res) => {
+        res.send('🚀 Tributoo Backend is Running. Frontend not built yet.');
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`Server started on port ${PORT}`);
