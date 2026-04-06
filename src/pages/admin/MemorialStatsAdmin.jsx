@@ -13,7 +13,7 @@ const MemorialStatsAdmin = () => {
     const itemsPerPage = 10;
 
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = user.role === 'admin' || user.username === 'admin' || user.email?.includes('admin');
+    const isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.role === 'support' || user.is_super_admin || user.username === 'admin' || user.email?.includes('admin');
 
     const displayedTributes = isAdmin ? tributes : tributes.filter(t => t.userId === user.id);
 

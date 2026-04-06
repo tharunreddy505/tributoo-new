@@ -7,6 +7,8 @@ import { decodeHtml } from '../../utils/htmlUtils';
 
 const PostsListAdmin = () => {
     const { posts, deletePost, showAlert, showToast } = useTributeContext();
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const isSupport = user.role === 'support';
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
@@ -19,10 +21,12 @@ const PostsListAdmin = () => {
                         className="w-full pl-10 pr-4 py-2 rounded-md border border-gray-300 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                     />
                 </div>
-                <Link to="/admin/posts/new" className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors flex items-center gap-2">
-                    <FontAwesomeIcon icon={faPlus} />
-                    Add New Blog
-                </Link>
+                {!isSupport && (
+                    <Link to="/admin/posts/new" className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors flex items-center gap-2">
+                        <FontAwesomeIcon icon={faPlus} />
+                        Add New Blog
+                    </Link>
+                )}
             </div>
 
             <div className="overflow-x-auto">
@@ -72,25 +76,29 @@ const PostsListAdmin = () => {
                                     >
                                         <FontAwesomeIcon icon={faEye} />
                                     </Link>
-                                    <Link
-                                        to={`/admin/posts/edit/${post.id}`}
-                                        className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-green-600 transition-colors"
-                                        title="Edit"
-                                    >
-                                        <FontAwesomeIcon icon={faEdit} />
-                                    </Link>
-                                    <button
-                                        className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                                        title="Delete"
-                                        onClick={() => {
-                                            showAlert("Are you sure you want to delete this blog post? This action cannot be undone.", "error", "Confirm Delete", async () => {
-                                                const success = await deletePost(post.id);
-                                                if (success) showToast("Blog post deleted");
-                                            });
-                                        }}
-                                    >
-                                        <FontAwesomeIcon icon={faTrash} />
-                                    </button>
+                                    {!isSupport && (
+                                        <>
+                                        <Link
+                                            to={`/admin/posts/edit/${post.id}`}
+                                            className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-green-600 transition-colors"
+                                            title="Edit"
+                                        >
+                                            <FontAwesomeIcon icon={faEdit} />
+                                        </Link>
+                                        <button
+                                            className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                                            title="Delete"
+                                            onClick={() => {
+                                                showAlert("Are you sure you want to delete this blog post? This action cannot be undone.", "error", "Confirm Delete", async () => {
+                                                    const success = await deletePost(post.id);
+                                                    if (success) showToast("Blog post deleted");
+                                                });
+                                            }}
+                                        >
+                                            <FontAwesomeIcon icon={faTrash} />
+                                        </button>
+                                        </>
+                                    )}
                                 </td>
                             </tr>
                         ))}

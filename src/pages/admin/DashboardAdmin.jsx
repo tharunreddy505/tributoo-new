@@ -18,7 +18,9 @@ const DashboardAdmin = () => {
     }, [fetchComments]);
 
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = user.role === 'admin' || user.username === 'admin' || user.email?.includes('admin');
+    const isSupport = user.role === 'support';
+    const isAdmin = user.role === 'admin' || user.role === 'superadmin' || isSupport || user.is_super_admin || user.username === 'admin' || user.email?.includes('admin');
+    const isSuperAdmin = user.is_super_admin || user.role === 'superadmin';
 
     // Filter tributes based on role
     const displayedTributes = isAdmin ? tributes : tributes.filter(t => t.userId === user.id);
@@ -149,7 +151,7 @@ const DashboardAdmin = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <Link to={`/admin/posts/edit/${post.id}`} className="text-blue-600 hover:text-blue-800 mr-3 text-xs font-bold">Edit</Link>
+                                                    {!isSupport && <Link to={`/admin/posts/edit/${post.id}`} className="text-blue-600 hover:text-blue-800 mr-3 text-xs font-bold">Edit</Link>}
                                                     <Link to={`/blog/${post.slug}`} className="text-gray-400 hover:text-gray-600 text-xs font-bold">View</Link>
                                                 </td>
                                             </tr>
@@ -157,7 +159,7 @@ const DashboardAdmin = () => {
                                         {posts.length === 0 && (
                                             <tr>
                                                 <td colSpan="3" className="px-6 py-8 text-center text-gray-400">
-                                                    No blogs found. <Link to="/admin/posts/new" className="text-primary hover:underline">Write one.</Link>
+                                                    No blogs found.{!isSupport && <> <Link to="/admin/posts/new" className="text-primary hover:underline">Write one.</Link></>}
                                                 </td>
                                             </tr>
                                         )}
@@ -226,9 +228,11 @@ const DashboardAdmin = () => {
                                 <Link to="/admin/condolences" className="block w-full text-center bg-gray-100 text-gray-700 py-2 rounded hover:bg-gray-200 transition-colors font-medium text-sm">
                                     Guestbook Messages
                                 </Link>
-                                <Link to="/admin/settings" className="block w-full text-center bg-gray-100 text-gray-700 py-2 rounded hover:bg-gray-200 transition-colors font-medium text-sm">
-                                    Site Settings
-                                </Link>
+                                {!isSupport && (
+                                    <Link to="/admin/settings" className="block w-full text-center bg-gray-100 text-gray-700 py-2 rounded hover:bg-gray-200 transition-colors font-medium text-sm">
+                                        Site Settings
+                                    </Link>
+                                )}
                             </>
                         )}
                     </div>

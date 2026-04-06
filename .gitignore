@@ -35,3 +35,6 @@ tributtoo.sql
 
 # Build
 dist
+
+# Uploaded media files
+uploads/

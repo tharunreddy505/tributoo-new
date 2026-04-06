@@ -25,6 +25,17 @@ const availablePermissions = [
     { id: 'settings', label: 'System Settings', icon: '⚙️' },
 ];
 
+// CRUD actions
+const CRUD = [
+    { key: 'c', label: 'C', title: 'Create', color: 'emerald' },
+    { key: 'r', label: 'R', title: 'Read',   color: 'blue'    },
+    { key: 'u', label: 'U', title: 'Update', color: 'amber'   },
+    { key: 'd', label: 'D', title: 'Delete', color: 'red'     },
+];
+
+// Build all individual CRUD permission IDs (e.g. "memorials:c")
+const allCrudPermissions = availablePermissions.flatMap(p => CRUD.map(a => `${p.id}:${a.key}`));
+
 const UsersListAdmin = () => {
     const { showAlert, showToast } = useTributeContext();
     const [users, setUsers] = useState([]);
@@ -44,6 +55,7 @@ const UsersListAdmin = () => {
     const roleOptions = [
         { value: 'private', label: 'Private Users', color: 'emerald', icon: '👤' },
         { value: 'company', label: 'Company Users', color: 'blue', icon: '🏢' },
+        { value: 'support', label: 'Support', color: 'cyan', icon: '🎧' },
         { value: 'admin', label: 'Admins', color: 'purple', icon: '🛡️' },
         { value: 'superadmin', label: 'Super Admins', color: 'yellow', icon: '⭐' },
     ];
@@ -354,18 +366,18 @@ const UsersListAdmin = () => {
                                 })()}
                             </div>
 
-                            {/* ── Permissions grid (shown once role is picked) ── */}
+                            {/* ── Permissions CRUD table (shown once role is picked) ── */}
                             {qaSelectedRole && (
                                 <>
                                     <div>
                                         <div className="flex items-center justify-between mb-3">
                                             <label className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
                                                 Accessible Options
-                                                <span className="ml-2 text-yellow-400">({qaPermissions.length}/{availablePermissions.length} selected)</span>
+                                                <span className="ml-2 text-yellow-400">({qaPermissions.length}/{allCrudPermissions.length} selected)</span>
                                             </label>
                                             <div className="flex gap-3">
                                                 <button
-                                                    onClick={() => { setQaPermissions(availablePermissions.map(p => p.id)); setQaSuccess(null); }}
+                                                    onClick={() => { setQaPermissions([...allCrudPermissions]); setQaSuccess(null); }}
                                                     className="text-[11px] text-yellow-400 font-bold hover:text-yellow-300 transition-colors"
                                                 >
                                                     Select All
@@ -380,26 +392,81 @@ const UsersListAdmin = () => {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                                            {availablePermissions.map(item => {
-                                                const active = qaPermissions.includes(item.id);
+                                        {/* CRUD header */}
+                                        <div className="rounded-xl overflow-hidden border border-white/10">
+                                            {/* Column headers */}
+                                            <div className="grid grid-cols-[1fr_44px_44px_44px_44px] gap-0 bg-white/5 border-b border-white/10 px-3 py-2">
+                                                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Section</span>
+                                                {CRUD.map(a => (
+                                                    <span key={a.key} className="text-[10px] font-black text-center uppercase tracking-wider" style={{color: a.key==='c'?'#6ee7b7':a.key==='r'?'#93c5fd':a.key==='u'?'#fcd34d':'#fca5a5'}}>
+                                                        {a.label}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            {/* Rows */}
+                                            {availablePermissions.map((item, idx) => {
+                                                const rowPerms = CRUD.map(a => `${item.id}:${a.key}`);
+                                                const allRowActive = rowPerms.every(p => qaPermissions.includes(p));
                                                 return (
-                                                    <button
+                                                    <div
                                                         key={item.id}
-                                                        onClick={() => toggleQaPermission(item.id)}
-                                                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all ${active
-                                                            ? 'bg-yellow-400/20 border-yellow-400/60 text-yellow-300 shadow-sm'
-                                                            : 'bg-white/5 border-white/10 text-indigo-300 hover:bg-white/10 hover:border-white/20'
-                                                            }`}
+                                                        className={`grid grid-cols-[1fr_44px_44px_44px_44px] gap-0 px-3 py-2.5 items-center transition-colors ${idx % 2 === 0 ? 'bg-white/[0.03]' : 'bg-transparent'} hover:bg-white/[0.07]`}
                                                     >
-                                                        <span className="text-base leading-none">{item.icon}</span>
-                                                        <span className="text-xs font-semibold leading-tight flex-1">{item.label}</span>
-                                                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${active ? 'bg-yellow-400 border-yellow-400' : 'border-indigo-500'}`}>
-                                                            {active && <span className="text-indigo-900 text-[8px] font-black leading-none">✓</span>}
-                                                        </div>
-                                                    </button>
+                                                        {/* Section name — click to toggle all CRUD for this row */}
+                                                        <button
+                                                            onClick={() => {
+                                                                setQaSuccess(null);
+                                                                if (allRowActive) {
+                                                                    setQaPermissions(prev => prev.filter(p => !rowPerms.includes(p)));
+                                                                } else {
+                                                                    setQaPermissions(prev => [...new Set([...prev, ...rowPerms])]);
+                                                                }
+                                                            }}
+                                                            className="flex items-center gap-2 text-left group"
+                                                        >
+                                                            <span className="text-sm">{item.icon}</span>
+                                                            <span className={`text-xs font-semibold transition-colors ${allRowActive ? 'text-yellow-300' : 'text-indigo-200 group-hover:text-white'}`}>
+                                                                {item.label}
+                                                            </span>
+                                                        </button>
+                                                        {/* C R U D checkboxes */}
+                                                        {CRUD.map(a => {
+                                                            const permId = `${item.id}:${a.key}`;
+                                                            const active = qaPermissions.includes(permId);
+                                                            return (
+                                                                <button
+                                                                    key={a.key}
+                                                                    onClick={() => { setQaSuccess(null); toggleQaPermission(permId); }}
+                                                                    title={a.title}
+                                                                    className="flex items-center justify-center"
+                                                                >
+                                                                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all
+                                                                        ${active
+                                                                            ? a.key==='c' ? 'bg-emerald-500 border-emerald-500'
+                                                                            : a.key==='r' ? 'bg-blue-500 border-blue-500'
+                                                                            : a.key==='u' ? 'bg-amber-400 border-amber-400'
+                                                                            : 'bg-red-500 border-red-500'
+                                                                            : 'border-indigo-600 hover:border-indigo-400'
+                                                                        }`}
+                                                                    >
+                                                                        {active && <span className="text-white text-[8px] font-black">✓</span>}
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 );
                                             })}
+                                        </div>
+
+                                        {/* Legend */}
+                                        <div className="flex gap-4 mt-2 px-1">
+                                            {CRUD.map(a => (
+                                                <span key={a.key} className="flex items-center gap-1 text-[10px] text-indigo-400">
+                                                    <span className="font-black" style={{color: a.key==='c'?'#6ee7b7':a.key==='r'?'#93c5fd':a.key==='u'?'#fcd34d':'#fca5a5'}}>{a.label}</span>
+                                                    = {a.title}
+                                                </span>
+                                            ))}
                                         </div>
                                     </div>
 
@@ -538,7 +605,7 @@ const UsersListAdmin = () => {
                                             </td>
                                             <td className="px-4 py-4">{user.email}</td>
                                             <td className="px-4 py-4">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${user.role === 'admin' || user.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${user.role === 'admin' || user.role === 'superadmin' ? 'bg-purple-100 text-purple-700' : user.role === 'support' ? 'bg-cyan-100 text-cyan-700' : 'bg-green-100 text-green-700'}`}>
                                                     {user.role}
                                                 </span>
                                             </td>
@@ -637,6 +704,7 @@ const UsersListAdmin = () => {
                                     <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-1 focus:ring-primary outline-none">
                                         <option value="private">Private User</option>
                                         <option value="company">Company User</option>
+                                        <option value="support">Support</option>
                                         <option value="admin">Admin</option>
                                         <option value="superadmin">Superadmin</option>
                                     </select>
@@ -724,6 +792,7 @@ const UsersListAdmin = () => {
                                             <select value={bulkForm.role} onChange={(e) => setBulkForm(prev => ({ ...prev, role: e.target.value }))} className="w-full px-4 py-2 rounded-lg border border-indigo-200 outline-none text-sm">
                                                 <option value="private">Private User</option>
                                                 <option value="company">Company User</option>
+                                                <option value="support">Support</option>
                                                 <option value="admin">Admin</option>
                                                 <option value="superadmin">Superadmin</option>
                                             </select>

@@ -217,6 +217,9 @@ const MenusAdmin = () => {
         showAlert, showToast
     } = useTributeContext();
 
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const isSupport = user.role === 'support';
+
     const [menus, setMenus] = useState([]);
     const [selectedMenuId, setSelectedMenuId] = useState('');
     const [currentMenu, setCurrentMenu] = useState(null);
@@ -472,12 +475,14 @@ const MenusAdmin = () => {
                     >
                         {menus.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
-                    <button
-                        onClick={() => setIsCreating(true)}
-                        className="text-primary text-sm font-bold hover:underline"
-                    >
-                        or create a new menu
-                    </button>
+                    {!isSupport && (
+                        <button
+                            onClick={() => setIsCreating(true)}
+                            className="text-primary text-sm font-bold hover:underline"
+                        >
+                            or create a new menu
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -750,18 +755,22 @@ const MenusAdmin = () => {
                                     </div>
 
                                     <div className="flex justify-between items-center pt-6 border-t border-gray-100">
-                                        <button
-                                            onClick={handleDeleteMenu}
-                                            className="text-red-500 font-bold text-xs hover:underline"
-                                        >Delete Menu</button>
-                                        <button
-                                            onClick={handleSaveMenu}
-                                            disabled={loading}
-                                            className="bg-primary text-white px-8 py-2.5 rounded-md font-bold shadow-md hover:bg-opacity-90 transition-all flex items-center gap-2"
-                                        >
-                                            <FontAwesomeIcon icon={faSave} />
-                                            {loading ? 'Saving...' : 'Save Menu'}
-                                        </button>
+                                        {!isSupport && (
+                                            <button
+                                                onClick={handleDeleteMenu}
+                                                className="text-red-500 font-bold text-xs hover:underline"
+                                            >Delete Menu</button>
+                                        )}
+                                        {!isSupport && (
+                                            <button
+                                                onClick={handleSaveMenu}
+                                                disabled={loading}
+                                                className="bg-primary text-white px-8 py-2.5 rounded-md font-bold shadow-md hover:bg-opacity-90 transition-all flex items-center gap-2"
+                                            >
+                                                <FontAwesomeIcon icon={faSave} />
+                                                {loading ? 'Saving...' : 'Save Menu'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </>

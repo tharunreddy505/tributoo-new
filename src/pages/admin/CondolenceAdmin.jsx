@@ -18,7 +18,7 @@ const CondolenceAdmin = () => {
 
     // Current user info
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = currentUser.role === 'admin' || currentUser.username === 'admin' || currentUser.email?.includes('admin');
+    const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superadmin' || currentUser.role === 'support' || currentUser.is_super_admin || currentUser.username === 'admin' || currentUser.email?.includes('admin');
 
     // Only the current user's memorial IDs (for filtering)
     const myTributeIds = tributes

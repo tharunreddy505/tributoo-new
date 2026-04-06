@@ -204,6 +204,20 @@ const isAdmin = (req, res, next) => {
     }
 };
 
+// Support users can access user management, orders, comments, subscriptions (read + manage)
+const isAdminOrSupport = (req, res, next) => {
+    const allowed = req.user && (
+        req.user.role === 'admin' ||
+        req.user.role === 'superadmin' ||
+        req.user.role === 'support' ||
+        req.user.is_super_admin ||
+        req.user.username === 'admin' ||
+        req.user.email === 'admin@tributo'
+    );
+    if (allowed) return next();
+    res.status(403).json({ error: "Access denied." });
+};
+
 const isSuperAdmin = (req, res, next) => {
     const isSuper = req.user && (req.user.is_super_admin || req.user.role === 'superadmin');
     if (isSuper) {
@@ -216,7 +230,7 @@ const isSuperAdmin = (req, res, next) => {
 const hasPermission = (permission) => {
     return (req, res, next) => {
         if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-        if (req.user.is_super_admin || req.user.role === 'superadmin') return next();
+        if (req.user.is_super_admin || req.user.role === 'superadmin' || req.user.role === 'support' || req.user.role === 'admin') return next();
 
         const permissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
         if (permissions.includes(permission)) return next();
@@ -813,7 +827,7 @@ app.post('/api/orders/pending', async (req, res) => {
     }
 });
 
-app.get('/api/orders', authenticateToken, isAdmin, async (req, res) => {
+app.get('/api/orders', authenticateToken, isAdminOrSupport, async (req, res) => {
     try {
         const ordersResult = await pool.query("SELECT * FROM orders ORDER BY created_at DESC");
         const orders = ordersResult.rows;
@@ -862,10 +876,17 @@ app.post('/api/auth/register', async (req, res) => {
     try {
         const { username, email, password, role, companyName, description, isVisible, logoUrl } = req.body;
 
-        // Check if user exists
-        const userExists = await pool.query("SELECT * FROM users WHERE email = $1 OR username = $2", [email, username]);
-        if (userExists.rows.length > 0) {
-            return res.status(400).json({ error: "User with this email or username already exists" });
+        // For company role, username field is empty — use companyName instead (matches what gets inserted)
+        const effectiveUsername = username || companyName;
+
+        // Check if user exists (check email and username separately for specific error messages)
+        const emailExists = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+        if (emailExists.rows.length > 0) {
+            return res.status(400).json({ error: "User with this email already exists", field: "email" });
+        }
+        const usernameExists = await pool.query("SELECT id FROM users WHERE username = $1", [effectiveUsername]);
+        if (usernameExists.rows.length > 0) {
+            return res.status(400).json({ error: "User with this company name already exists", field: "companyName" });
         }
 
         // Hash password
@@ -1258,7 +1279,7 @@ app.post('/api/author/:username/message', async (req, res) => {
     }
 });
 
-app.get('/api/users', authenticateToken, isAdmin, async (req, res) => {
+app.get('/api/users', authenticateToken, isAdminOrSupport, async (req, res) => {
 
     try {
         const result = await pool.query("SELECT id, username, email, role, created_at, company_name, is_super_admin, permissions FROM users ORDER BY created_at DESC");
@@ -1294,7 +1315,7 @@ app.post('/api/users', authenticateToken, isSuperAdmin, async (req, res) => {
 });
 
 // Bulk update users — MUST be before /:id to avoid 'bulk' being treated as an ID
-app.put('/api/users/bulk', authenticateToken, isAdmin, async (req, res) => {
+app.put('/api/users/bulk', authenticateToken, isAdminOrSupport, async (req, res) => {
     try {
         const { userIds, role, is_super_admin, permissions } = req.body;
 
@@ -1330,7 +1351,7 @@ app.put('/api/users/bulk', authenticateToken, isAdmin, async (req, res) => {
     }
 });
 
-app.put('/api/users/:id', authenticateToken, isAdmin, async (req, res) => {
+app.put('/api/users/:id', authenticateToken, isAdminOrSupport, async (req, res) => {
     try {
         const { id } = req.params;
         const { role, is_super_admin, permissions, username, email } = req.body;
@@ -1399,6 +1420,7 @@ const mapTribute = (row, req) => ({
     reminderOptions: row.reminder_options || [],
     images: [],
     videos: [],
+    documents: [],
     comments: []
 });
 
@@ -1419,6 +1441,7 @@ app.get('/api/tributes', async (req, res) => {
         const isAdminUser = currentUser && (
             currentUser.role === 'admin' ||
             currentUser.role === 'superadmin' ||
+            currentUser.role === 'support' ||
             currentUser.is_super_admin
         );
 
@@ -1525,8 +1548,9 @@ app.get('/api/tributes', async (req, res) => {
                         tribute.coverMeta = mediaObj;
                     }
 
-                    if (m.type === 'image') tribute.images.push(mediaObj);
+                    if (m.type === 'image' && m.alt_text !== 'Profile Photo' && m.alt_text !== 'Cover Image') tribute.images.push(mediaObj);
                     if (m.type === 'video') tribute.videos.push(mediaObj);
+                    if (m.type === 'document') { if (!tribute.documents) tribute.documents = []; tribute.documents.push(mediaObj); }
                 }
             });
 
@@ -1623,10 +1647,19 @@ app.post('/api/tributes', authenticateToken, async (req, res) => {
             console.error("Upload Failed during memorial creation:", uploadErr.message);
         }
 
+        // Resolve slug conflicts: if slug taken, try slug-2, slug-3, ...
+        let finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        let slugSuffix = 2;
+        while (true) {
+            const existing = await pool.query("SELECT id FROM tributes WHERE slug = $1", [finalSlug]);
+            if (!existing.rows.length) break;
+            finalSlug = `${slug}-${slugSuffix++}`;
+        }
+
         const newTribute = await pool.query(
             "INSERT INTO tributes (name, dates, birth_date, passing_date, bio, photo_url, cover_url, slug, user_id, video_urls, status, is_anniversary_reminder, reminder_options, grave_address, grave_latitude, grave_longitude, show_grave_location) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *",
             [
-                name, dates, birthDate, passingDate, bio, photoUrl, finalCoverUrl || null, slug, userId || null, 
+                name, dates, birthDate, passingDate, bio, photoUrl, finalCoverUrl || null, finalSlug, userId || null, 
                 JSON.stringify(videoUrls || []), status || 'public', isAnniversaryReminder || 'no', 
                 JSON.stringify(reminderOptions || []), graveAddress, graveLatitude, graveLongitude, 
                 showGraveLocation !== undefined ? showGraveLocation : true
@@ -1642,7 +1675,7 @@ app.post('/api/tributes', authenticateToken, async (req, res) => {
             );
         }
 
-        // Add to Media Library
+        // Add to Media Library (alt_text marks these so the gallery count query excludes them)
         if (photo && photo.startsWith('data:') && photoUrl) {
             await pool.query("INSERT INTO media (tribute_id, user_id, type, url, alt_text) VALUES ($1, $2, 'image', $3, 'Profile Photo')", [tributeId, userId || req.user?.id || null, photoUrl]);
         }
@@ -1723,6 +1756,7 @@ app.get('/api/tributes/by-slug/:slug', async (req, res) => {
             const mediaObj = { id: m.id, url: formatMediaUrl(m.url, req), alt_text: m.alt_text, title: m.title, caption: m.caption, description: m.description };
             if (m.type === 'image') tribute.images.push(mediaObj);
             if (m.type === 'video') tribute.videos.push(mediaObj);
+            if (m.type === 'document') { if (!tribute.documents) tribute.documents = []; tribute.documents.push(mediaObj); }
         });
 
         // Attach comments
@@ -1753,7 +1787,7 @@ app.put('/api/tributes/:id', authenticateToken, async (req, res) => {
         // Check ownership (unless admin/superadmin)
         const check = await pool.query("SELECT user_id FROM tributes WHERE id = $1", [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Tribute not found" });
-        const isPrivilegedUser = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
+        const isPrivilegedUser = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'support' || req.user.is_super_admin;
         const isOwner = check.rows[0].user_id && String(check.rows[0].user_id) === String(req.user.id);
         if (!isPrivilegedUser && !isOwner) {
             return res.status(403).json({ error: "Access denied. You don't own this tribute." });
@@ -1770,17 +1804,14 @@ app.put('/api/tributes/:id', authenticateToken, async (req, res) => {
             if (updates.photo && updates.photo.startsWith('data:')) {
                 console.log(`Updating profile photo (ID: ${id})...`);
                 updates.photo = await handleMediaUpload(updates.photo, `memorial_photo_${id}_${Date.now()}`);
-                await pool.query("INSERT INTO media (tribute_id, user_id, type, url, alt_text) VALUES ($1, $2, 'image', $3, 'Profile Photo')", [id, req.user.id, updates.photo]);
             } else if (updates.image && updates.image.startsWith('data:')) {
                 console.log(`Updating profile image (ID: ${id})...`);
                 updates.image = await handleMediaUpload(updates.image, `memorial_photo_${id}_${Date.now()}`);
-                await pool.query("INSERT INTO media (tribute_id, user_id, type, url, alt_text) VALUES ($1, $2, 'image', $3, 'Profile Photo')", [id, req.user.id, updates.image]);
             }
 
             if (updates.coverUrl && updates.coverUrl.startsWith('data:')) {
                 console.log(`Updating cover image (ID: ${id})...`);
                 updates.coverUrl = await handleMediaUpload(updates.coverUrl, `memorial_cover_${id}_${Date.now()}`);
-                await pool.query("INSERT INTO media (tribute_id, user_id, type, url, alt_text) VALUES ($1, $2, 'image', $3, 'Cover Image')", [id, req.user.id, updates.coverUrl]);
             }
         } catch (uploadErr) {
             console.error("Upload Failed during memorial update:", uploadErr.message);
@@ -1853,7 +1884,7 @@ app.delete('/api/tributes/:id', authenticateToken, async (req, res) => {
         // Check ownership (unless admin/superadmin)
         const check = await pool.query("SELECT user_id FROM tributes WHERE id = $1", [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Tribute not found" });
-        const isPrivilegedUser = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
+        const isPrivilegedUser = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'support' || req.user.is_super_admin;
         const isOwner = check.rows[0].user_id && String(check.rows[0].user_id) === String(req.user.id);
         if (!isPrivilegedUser && !isOwner) {
             return res.status(403).json({ error: "Access denied. You don't own this tribute." });
@@ -2006,7 +2037,7 @@ app.get('/api/comments', async (req, res) => {
     }
 });
 
-app.delete('/api/comments/:id', authenticateToken, isAdmin, async (req, res) => {
+app.delete('/api/comments/:id', authenticateToken, isAdminOrSupport, async (req, res) => {
     try {
         const { id } = req.params;
         await pool.query("DELETE FROM comments WHERE id = $1", [id]);
@@ -2017,7 +2048,7 @@ app.delete('/api/comments/:id', authenticateToken, isAdmin, async (req, res) => 
     }
 });
 
-app.put('/api/comments/:id', authenticateToken, isAdmin, async (req, res) => {
+app.put('/api/comments/:id', authenticateToken, isAdminOrSupport, async (req, res) => {
     try {
         const { id } = req.params;
         let { name, content, email, imageUrl, image } = req.body;
@@ -2058,8 +2089,8 @@ app.post('/api/tributes/:id/media', authenticateToken, async (req, res) => {
         const { id } = req.params;
         let { type, url } = req.body;
 
-        // LIMITS Check (SKIP for Admin or Premium memorial owners)
-        const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
+        // LIMITS Check (SKIP for Admin/Support or Premium memorial owners)
+        const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'support' || req.user.is_super_admin;
         
         let isPremiumMemorial = false;
         if (!isPrivileged) {
@@ -2083,9 +2114,12 @@ app.post('/api/tributes/:id/media', authenticateToken, async (req, res) => {
                 return res.status(403).json({ error: "Documents are not available in the free version. Please upgrade to Premium." });
             }
 
-            const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [id]);
+            const countRes = await pool.query(
+                "SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image' AND (alt_text IS NULL OR (alt_text != 'Profile Photo' AND alt_text != 'Cover Image'))",
+                [id]
+            );
             if (parseInt(countRes.rows[0].count) >= 10) {
-                return res.status(403).json({ error: "Free memorials are limited to 10 images. Please upgrade to Premium for unlimited storage." });
+                return res.status(403).json({ error: "Free memorials are limited to 10 gallery photos. Please upgrade to Premium for unlimited storage." });
             }
         }
 
@@ -2167,8 +2201,8 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
         if (!req.file) return res.status(400).json({ error: "No file uploaded" });
         const { type, tribute_id } = req.body;
 
-        // Enforcement of limits for direct upload too (Skip for Admin)
-        const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.is_super_admin;
+        // Enforcement of limits for direct upload too (Skip for Admin/Support)
+        const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'support' || req.user.is_super_admin;
 
         if (tribute_id && !isPrivileged) {
             // Check if memorial has a premium plan
@@ -2189,9 +2223,12 @@ app.post('/api/media/upload', authenticateToken, upload.single('file'), async (r
                 if (type === 'document') {
                     return res.status(403).json({ error: "Document uploads are restricted in the free version. Please upgrade to Premium." });
                 }
-                const countRes = await pool.query("SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image'", [tribute_id]);
+                const countRes = await pool.query(
+                    "SELECT COUNT(*) FROM media WHERE tribute_id = $1 AND type = 'image' AND (alt_text IS NULL OR (alt_text != 'Profile Photo' AND alt_text != 'Cover Image'))",
+                    [tribute_id]
+                );
                 if (parseInt(countRes.rows[0].count) >= 10) {
-                    return res.status(403).json({ error: "Free version is limited to 10 images. Please upgrade to Premium for unlimited uploads." });
+                    return res.status(403).json({ error: "Free memorials are limited to 10 gallery photos. Please upgrade to Premium for unlimited uploads." });
                 }
             }
         }
@@ -3953,7 +3990,7 @@ app.get('/sitemap.xml', async (req, res) => {
     const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
     try {
         const [memorials, posts, pages] = await Promise.all([
-            pool.query("SELECT slug, updated_at FROM tributes WHERE status = 'active' AND slug IS NOT NULL"),
+            pool.query("SELECT slug, updated_at FROM tributes WHERE status = 'public' AND slug IS NOT NULL"),
             pool.query("SELECT slug, updated_at FROM posts WHERE status = 'published' AND slug IS NOT NULL"),
             pool.query("SELECT slug, updated_at FROM pages WHERE status = 'published' AND slug IS NOT NULL"),
         ]);
@@ -4007,6 +4044,65 @@ ${allUrls.map(u => `  <url>
 });
 
 // =============================================
+// SEO: robots.txt
+// =============================================
+app.get('/robots.txt', (req, res) => {
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    res.type('text/plain').send(
+`User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: ${siteUrl}/sitemap.xml`
+    );
+});
+
+// =============================================
+// SEO: sitemap.xml — all pages in 3 languages
+// =============================================
+app.get('/sitemap.xml', async (req, res) => {
+    const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    const langs = ['en', 'de', 'it'];
+
+    const urlEntry = (basePath) => {
+        const links = langs.map(l => {
+            const href = l === 'en' ? `${siteUrl}${basePath}` : `${siteUrl}/${l}${basePath}`;
+            return `      <xhtml:link rel="alternate" hreflang="${l}" href="${href}"/>`;
+        }).join('\n');
+        const xDefault = `      <xhtml:link rel="alternate" hreflang="x-default" href="${siteUrl}${basePath}"/>`;
+        const canonical = `${siteUrl}${basePath}`;
+        return `  <url>\n    <loc>${canonical}</loc>\n${links}\n${xDefault}\n  </url>`;
+    };
+
+    try {
+        const [posts, pages, memorials] = await Promise.all([
+            pool.query("SELECT slug FROM posts WHERE status = 'published'"),
+            pool.query("SELECT slug FROM pages WHERE status = 'published'"),
+            pool.query("SELECT slug FROM tributes WHERE status = 'public'"),
+        ]);
+
+        const staticPaths = ['/', '/blog', '/memorials', '/shop'];
+        const postPaths = posts.rows.map(r => `/blog/${r.slug}`);
+        const pagePaths = pages.rows.map(r => `/${r.slug}`);
+        const memorialPaths = memorials.rows.map(r => `/memorial/${r.slug}`);
+
+        const allPaths = [...staticPaths, ...postPaths, ...pagePaths, ...memorialPaths];
+        const urls = allPaths.map(urlEntry).join('\n');
+
+        res.type('application/xml').send(
+`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${urls}
+</urlset>`
+        );
+    } catch (e) {
+        res.status(500).send('Error generating sitemap');
+    }
+});
+
+// =============================================
 // SEO: Bot prerendering — serves full HTML with
 // meta tags for crawlers (Google, Facebook, etc.)
 // =============================================
@@ -4014,19 +4110,31 @@ const BOT_AGENTS = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|so
 
 const isBotRequest = (req) => BOT_AGENTS.test(req.headers['user-agent'] || '');
 
-const buildBotHtml = ({ title, description, image, url, type = 'website' }) => {
+const LANG_LOCALE_MAP = { en: 'en_US', de: 'de_DE', it: 'it_IT' };
+
+const buildBotHtml = ({ title, description, image, url, type = 'website', lang = 'en', alternates = {} }) => {
     const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
     const safeTitle = (title || 'Tributoo - Digital Memorials').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const safeDesc = (description || 'Create everlasting digital memorials for your loved ones.').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const safeImage = image || `${siteUrl}/og-default.jpg`;
     const safeUrl = url || siteUrl;
+    const ogLocale = LANG_LOCALE_MAP[lang] || 'en_US';
+
+    const hreflangTags = Object.entries(alternates).map(([l, u]) =>
+        `  <link rel="alternate" hreflang="${l}" href="${u}" />`
+    ).join('\n');
+    const xDefaultTag = alternates.en
+        ? `  <link rel="alternate" hreflang="x-default" href="${alternates.en}" />`
+        : '';
+
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8" />
   <title>${safeTitle} | Tributoo</title>
   <meta name="description" content="${safeDesc}" />
   <meta property="og:type" content="${type}" />
+  <meta property="og:locale" content="${ogLocale}" />
   <meta property="og:title" content="${safeTitle} | Tributoo" />
   <meta property="og:description" content="${safeDesc}" />
   <meta property="og:image" content="${safeImage}" />
@@ -4036,6 +4144,8 @@ const buildBotHtml = ({ title, description, image, url, type = 'website' }) => {
   <meta name="twitter:description" content="${safeDesc}" />
   <meta name="twitter:image" content="${safeImage}" />
   <link rel="canonical" href="${safeUrl}" />
+${hreflangTags}
+${xDefaultTag}
 </head>
 <body>
   <h1>${safeTitle}</h1>
@@ -4044,67 +4154,102 @@ const buildBotHtml = ({ title, description, image, url, type = 'website' }) => {
 </html>`;
 };
 
-// Bot prerender: memorial pages
-app.get('/memorial/:slug', async (req, res, next) => {
+// Bot prerender: memorial pages (all 3 language variants)
+const botMemorialHandler = (lang) => async (req, res, next) => {
     if (!isBotRequest(req)) return next();
     const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    const { slug } = req.params;
     try {
         const result = await pool.query(
-            "SELECT name, bio, photo_url, cover_url FROM tributes WHERE slug = $1 AND status = 'active'",
-            [req.params.slug]
+            "SELECT name, bio, photo_url, cover_url FROM tributes WHERE slug = $1 AND status = 'public'",
+            [slug]
         );
         if (!result.rows.length) return next();
         const t = result.rows[0];
+        const alternates = {
+            en: `${siteUrl}/memorial/${slug}`,
+            de: `${siteUrl}/de/memorial/${slug}`,
+            it: `${siteUrl}/it/memorial/${slug}`,
+        };
         res.send(buildBotHtml({
             title: t.name,
             description: t.bio ? t.bio.replace(/<[^>]+>/g, '').substring(0, 160) : `Memorial page for ${t.name}`,
             image: t.cover_url || t.photo_url,
-            url: `${siteUrl}/memorial/${req.params.slug}`,
+            url: alternates[lang],
             type: 'profile',
+            lang,
+            alternates,
         }));
     } catch (e) { next(); }
-});
+};
+app.get('/memorial/:slug', botMemorialHandler('en'));
+app.get('/de/memorial/:slug', botMemorialHandler('de'));
+app.get('/it/memorial/:slug', botMemorialHandler('it'));
 
-// Bot prerender: blog posts
-app.get('/blog/:slug', async (req, res, next) => {
+// Bot prerender: blog posts (all 3 language variants)
+const botBlogHandler = (lang) => async (req, res, next) => {
     if (!isBotRequest(req)) return next();
     const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    const { slug } = req.params;
     try {
         const result = await pool.query(
-            "SELECT title, content, og_image, featured_image, seo_description FROM posts WHERE slug = $1 AND status = 'published'",
-            [req.params.slug]
+            "SELECT title, content, og_image, featured_image, seo_description, translations FROM posts WHERE slug = $1 AND status = 'published'",
+            [slug]
         );
         if (!result.rows.length) return next();
         const p = result.rows[0];
+        const tr = (p.translations && p.translations[lang]) || {};
+        const alternates = {
+            en: `${siteUrl}/blog/${slug}`,
+            de: `${siteUrl}/de/blog/${slug}`,
+            it: `${siteUrl}/it/blog/${slug}`,
+        };
         res.send(buildBotHtml({
-            title: p.title,
-            description: p.seo_description || (p.content ? p.content.replace(/<[^>]+>/g, '').substring(0, 160) : ''),
+            title: tr.title || p.title,
+            description: tr.seo_description || p.seo_description || (p.content ? p.content.replace(/<[^>]+>/g, '').substring(0, 160) : ''),
             image: p.og_image || p.featured_image,
-            url: `${siteUrl}/blog/${req.params.slug}`,
+            url: alternates[lang],
             type: 'article',
+            lang,
+            alternates,
         }));
     } catch (e) { next(); }
-});
+};
+app.get('/blog/:slug', botBlogHandler('en'));
+app.get('/de/blog/:slug', botBlogHandler('de'));
+app.get('/it/blog/:slug', botBlogHandler('it'));
 
-// Bot prerender: custom pages
-app.get('/page/:slug', async (req, res, next) => {
+// Bot prerender: custom pages (all 3 language variants)
+const botPageHandler = (lang) => async (req, res, next) => {
     if (!isBotRequest(req)) return next();
     const siteUrl = process.env.SITE_URL || 'https://www.tributoo.com';
+    const { slug } = req.params;
     try {
         const result = await pool.query(
-            "SELECT title, content, og_image, seo_description FROM pages WHERE slug = $1 AND status = 'published'",
-            [req.params.slug]
+            "SELECT title, content, og_image, seo_description, translations FROM pages WHERE slug = $1 AND status = 'published'",
+            [slug]
         );
         if (!result.rows.length) return next();
         const p = result.rows[0];
+        const tr = (p.translations && p.translations[lang]) || {};
+        const alternates = {
+            en: `${siteUrl}/${slug}`,
+            de: `${siteUrl}/de/${slug}`,
+            it: `${siteUrl}/it/${slug}`,
+        };
         res.send(buildBotHtml({
-            title: p.title,
-            description: p.seo_description || (p.content ? p.content.replace(/<[^>]+>/g, '').substring(0, 160) : ''),
+            title: tr.title || p.title,
+            description: tr.seo_description || p.seo_description || (p.content ? p.content.replace(/<[^>]+>/g, '').substring(0, 160) : ''),
             image: p.og_image,
-            url: `${siteUrl}/${req.params.slug}`,
+            url: alternates[lang],
+            lang,
+            alternates,
         }));
     } catch (e) { next(); }
-});
+};
+app.get('/page/:slug', botPageHandler('en'));
+app.get('/de/page/:slug', botPageHandler('de'));
+app.get('/it/page/:slug', botPageHandler('it'));
 
 // Global error handler
 app.use((err, req, res, next) => {

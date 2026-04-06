@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBookOpen, faPlay, faPen, faShareNodes, faTimes, faChevronLeft, faChevronRight, faLockOpen, faUpload } from '@fortawesome/free-solid-svg-icons';
+import { faBookOpen, faPlay, faPen, faShareNodes, faTimes, faChevronLeft, faChevronRight, faLockOpen, faUpload, faDownload, faFileAlt } from '@fortawesome/free-solid-svg-icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { useTributeContext } from '../context/TributeContext';
 import { useTranslation } from 'react-i18next';
@@ -37,7 +37,7 @@ const MemorialPage = () => {
     // Fetch fresh tribute data directly from API so photos always show
     useEffect(() => {
         if (!id) return;
-        fetch(`${API_URL}/api/tributes/by-slug/${encodeURIComponent(id)}`)
+        fetch(`${API_URL}/api/tributes/by-slug/${encodeURIComponent(id)}`, { cache: 'no-store' })
             .then(r => r.ok ? r.json() : null)
             .then(data => { if (data) setFreshTribute(data); })
             .catch(() => {});
@@ -63,9 +63,19 @@ const MemorialPage = () => {
         bio: rawData?.bio || rawData?.text || t('memorial_page.bio_fallback'),
         photo: rawData?.photo || rawData?.image || null,
         slug: rawData?.slug || "eleanor-rose-mitchell",
-        images: rawData?.images || [],
+        images: (rawData?.images || []).filter(img => {
+            const url = typeof img === 'object' ? img.url : img;
+            const altText = typeof img === 'object' ? img.alt_text : null;
+            if (altText === 'Profile Photo' || altText === 'Cover Image') return false;
+            const photoUrl = rawData?.photo || rawData?.image;
+            const coverUrl = rawData?.coverUrl;
+            if (photoUrl && url && url.split('/').pop() === photoUrl.split('/').pop()) return false;
+            if (coverUrl && url && url.split('/').pop() === coverUrl.split('/').pop()) return false;
+            return true;
+        }),
         videos: rawData?.videos || [],
         videoUrls: (rawData?.videoUrls || []).filter(url => url && url.trim() !== ''),
+        documents: rawData?.documents || [],
         comments: rawData?.comments || [],
         coverUrl: rawData?.coverUrl || null,
         id: rawData?.id || 'demo'
@@ -216,7 +226,7 @@ const MemorialPage = () => {
             if (showToast) showToast("Comment successfully submitted!", "success");
 
             // Re-fetch the fresh data natively so the comment appears immediately!
-            fetch(`${API_URL}/api/tributes/by-slug/${encodeURIComponent(tribute.slug || tribute.id || id)}`)
+            fetch(`${API_URL}/api/tributes/by-slug/${encodeURIComponent(tribute.slug || tribute.id || id)}`, { cache: 'no-store' })
                 .then(r => r.ok ? r.json() : null)
                 .then(data => { if (data) setFreshTribute(data); })
                 .catch(() => {});
@@ -636,7 +646,7 @@ const MemorialPage = () => {
                                 </div>
                                 </>)}
 
-                                {/* Bottom CTA Box - Redesigned matching screenshot */}
+                                {/* Bottom CTA Box */}
                                 <div className="w-full max-w-3xl mx-auto bg-white/50 backdrop-blur-sm p-14 mt-10 text-center border border-[#D4AF37]/10 shadow-[0_30px_70px_rgba(0,0,0,0.03)] relative group rounded-[2px] ring-1 ring-[#D4AF37]/5">
                                     <h4 className="text-dark font-serif font-normal text-xl md:text-2xl mb-10 tracking-tight leading-relaxed">
                                         {t('memorial_page.leave_message_title', 'Share your memories and condolences')}
@@ -649,6 +659,46 @@ const MemorialPage = () => {
                                         {t('memorial_page.leave_message_button', 'Leave a Message')}
                                     </button>
                                 </div>
+
+                                {/* Downloads Section */}
+                                {data.documents && data.documents.length > 0 && (
+                                    <div className="w-full max-w-3xl mx-auto mt-10">
+                                        <div className="flex flex-col items-center gap-3 mb-8">
+                                            <div className="w-14 h-14 rounded-full border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]/70 bg-white shadow-sm">
+                                                <FontAwesomeIcon icon={faFileAlt} className="text-lg" />
+                                            </div>
+                                            <p className="text-[10px] tracking-[0.3em] uppercase text-gray-400 font-description">Downloads</p>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {data.documents.map((doc) => {
+                                                const filename = (doc.url || '').split('/').pop() || '';
+                                                const ext = filename.split('.').pop()?.toUpperCase() || 'FILE';
+                                                const label = doc.title || doc.alt_text || filename.replace(/[_-]/g, ' ').replace(/\.[^.]+$/, '') || 'Document';
+                                                const desc = doc.caption || doc.description || '';
+                                                return (
+                                                    <div key={doc.id} className="flex items-center gap-5 bg-white border border-gray-100 rounded-lg p-5 shadow-sm">
+                                                        <div className="flex-shrink-0 w-14 h-14 bg-[#D4AF37] rounded-lg flex items-center justify-center text-white text-[11px] font-bold tracking-wide">
+                                                            {ext}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-medium text-gray-800 text-sm truncate">{label}</p>
+                                                            {desc && <p className="text-xs text-gray-400 mt-0.5 truncate">{desc}</p>}
+                                                        </div>
+                                                        <a
+                                                            href={doc.url}
+                                                            download
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex-shrink-0 bg-[#D4AF37] hover:bg-[#C4A027] text-white text-xs font-medium px-5 py-2.5 rounded-md transition-colors"
+                                                        >
+                                                            Download
+                                                        </a>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </section>
 

@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom';
 const ProductsAdmin = () => {
     const { products, deleteProduct, showToast, showAlert } = useTributeContext();
     const [searchTerm, setSearchTerm] = useState('');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const isSupport = user.role === 'support';
 
     const filteredProducts = products.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -24,13 +26,15 @@ const ProductsAdmin = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold text-gray-800">Products</h1>
-                <Link
-                    to="/admin/products/new"
-                    className="bg-primary text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-opacity-90 transition-all shadow-sm"
-                >
-                    <FontAwesomeIcon icon={faPlus} />
-                    Add New Product
-                </Link>
+                {!isSupport && (
+                    <Link
+                        to="/admin/products/new"
+                        className="bg-primary text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-opacity-90 transition-all shadow-sm"
+                    >
+                        <FontAwesomeIcon icon={faPlus} />
+                        Add New Product
+                    </Link>
+                )}
             </div>
 
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
@@ -100,20 +104,24 @@ const ProductsAdmin = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
-                                        <Link
-                                            to={`/admin/products/edit/${product.id}`}
-                                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="Edit Product"
-                                        >
-                                            <FontAwesomeIcon icon={faEdit} />
-                                        </Link>
-                                        <button
-                                            onClick={() => handleDelete(product.id)}
-                                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Delete Product"
-                                        >
-                                            <FontAwesomeIcon icon={faTrash} />
-                                        </button>
+                                        {!isSupport && (
+                                            <>
+                                            <Link
+                                                to={`/admin/products/edit/${product.id}`}
+                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="Edit Product"
+                                            >
+                                                <FontAwesomeIcon icon={faEdit} />
+                                            </Link>
+                                            <button
+                                                onClick={() => handleDelete(product.id)}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Delete Product"
+                                            >
+                                                <FontAwesomeIcon icon={faTrash} />
+                                            </button>
+                                            </>
+                                        )}
                                     </div>
                                 </td>
                             </tr>

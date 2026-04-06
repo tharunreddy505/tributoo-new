@@ -588,13 +588,16 @@ export const TributeProvider = ({ children }) => {
 
     const addComment = async (id, commentData) => {
         try {
-            await fetch(`${API_URL}/tributes/${id}/comments`, {
+            const res = await fetch(`${API_URL}/tributes/${id}/comments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(commentData)
             });
-            await fetchTributes();
-        } catch (e) { console.error(e); }
+            if (!res.ok) throw new Error('Failed to post comment');
+            const saved = await res.json();
+            fetchTributes(); // background refresh, not awaited
+            return saved;
+        } catch (e) { console.error(e); return null; }
     };
 
     const addMedia = async (id, type, url, silent = false) => {

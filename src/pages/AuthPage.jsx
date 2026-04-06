@@ -152,17 +152,15 @@ const AuthPage = ({ mode = 'login' }) => {
                 // Notify TributeContext to reload the user-specific cart
                 window.dispatchEvent(new Event('storage'));
 
-                // If user came from "Create Memorial" flow, send them back to open the modal
-                if (redirectParam === 'create-memorial') {
-                    navigate('/?openModal=create-memorial');
-                    window.location.reload();
-                    return;
-                }
-
                 if (!isLogin) {
                     setSuccessMessage("Registration Successful! Redirecting...");
                     setTimeout(() => {
-                        navigate('/admin/my-account');
+                        if (redirectParam === 'create-memorial') {
+                            const pkg = pkgParam || 'free';
+                            navigate(`/?processDraft=true&package=${pkg}`);
+                        } else {
+                            navigate('/admin');
+                        }
                         window.location.reload();
                     }, 1500);
                 } else {
@@ -174,23 +172,27 @@ const AuthPage = ({ mode = 'login' }) => {
                 const errorMsg = data.error || 'Something went wrong';
                 const newErrors = {};
 
-                if (errorMsg.toLowerCase().includes('email')) {
+                // Use server-provided field hint if available
+                if (data.field === 'email') {
                     newErrors.email = errorMsg;
-                }
-                if (errorMsg.toLowerCase().includes('username')) {
-                    newErrors.username = errorMsg;
-                }
-                if (errorMsg.toLowerCase().includes('company')) {
+                } else if (data.field === 'companyName') {
                     newErrors.companyName = errorMsg;
+                } else if (data.field === 'username') {
+                    newErrors.username = errorMsg;
+                } else if (errorMsg.toLowerCase().includes('email')) {
+                    newErrors.email = errorMsg;
+                } else if (errorMsg.toLowerCase().includes('company')) {
+                    newErrors.companyName = errorMsg;
+                } else if (errorMsg.toLowerCase().includes('username')) {
+                    newErrors.username = errorMsg;
                 }
 
                 // If no specific field matched, or it's a login error (often generic)
                 if (Object.keys(newErrors).length === 0) {
                     if (isLogin) {
-                        newErrors.password = errorMsg; // Show generic login failure under password standardly
+                        newErrors.password = errorMsg;
                         newErrors.username = errorMsg;
                     } else {
-                        // For generic registration errors, fallback to email as primary contact field
                         newErrors.email = errorMsg;
                     }
                 }

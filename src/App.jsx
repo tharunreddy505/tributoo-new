@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, useParams, useLocation, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Layout from './components/layout/Layout';
@@ -97,7 +97,7 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   }
 
   const isSuperAdmin = user.is_super_admin === true;
-  const isAdmin = user.role === 'admin' || isSuperAdmin || user.username === 'admin' || (user.email && user.email.includes('admin'));
+  const isAdmin = user.role === 'admin' || user.role === 'support' || isSuperAdmin || user.username === 'admin' || (user.email && user.email.includes('admin'));
 
   if (adminOnly && !isAdmin) {
     return <Navigate to="/admin" replace />;
@@ -114,6 +114,16 @@ const GlobalToast = () => {
 
 const GlobalAlert = () => {
   const { alertConfig, setAlertConfig } = useTributeContext();
+  const location = useLocation();
+  const prevPath = useRef(location.pathname);
+
+  useEffect(() => {
+    if (location.pathname !== prevPath.current) {
+      prevPath.current = location.pathname;
+      setAlertConfig(null);
+    }
+  }, [location.pathname]);
+
   if (!alertConfig) return null;
 
   const handleClose = () => {

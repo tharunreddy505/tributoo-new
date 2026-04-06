@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import localforage from 'localforage';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-    faTimes, faUpload, faImage, faPlus, faTrash, faVideo, faLink, faSpinner, faArrowRight, faArrowLeft, faCircle, faFileAlt, faMapMarkerAlt, faLock, faCompass, faEye
+    faTimes, faUpload, faImage, faPlus, faTrash, faVideo, faLink, faSpinner, faArrowRight, faArrowLeft, faCircle, faFileAlt, faMapMarkerAlt, faLock, faCompass, faEye, faCheck, faRocket, faCrown, faBuilding
 } from '@fortawesome/free-solid-svg-icons';
 import { useTranslation } from 'react-i18next';
 import { useTributeContext } from '../../context/TributeContext';
@@ -16,9 +16,10 @@ const MAPS_LIBRARIES = ['places'];
 const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const { addTribute, uploadMediaFile, fetchTributes, showToast, showAlert, products, addToCart } = useTributeContext();
+    const { addTribute, addMedia, uploadMediaFile, fetchTributes, showToast, showAlert, products, addToCart } = useTributeContext();
     const [submitting, setSubmitting] = useState(false);
     const [step, setStep] = useState(1);
+    const [internalPackage, setInternalPackage] = useState(selectedPackage || null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -117,7 +118,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
 
     const handleGalleryUpload = (e, type) => {
         const files = Array.from(e.target.files);
-        const isFree = !selectedPackage || selectedPackage === 'free';
+        const isFree = !internalPackage || internalPackage === 'free';
         
         if (isFree) {
             if (type === 'videos') {
@@ -155,7 +156,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
     };
 
     const handleAddVideoUrl = () => {
-        const isFree = !selectedPackage || selectedPackage === 'free';
+        const isFree = !internalPackage || internalPackage === 'free';
         if (isFree && formData.videoUrls.length >= 1) {
             showToast('Video links are restricted to Premium members.', 'error');
             return;
@@ -170,7 +171,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
     };
 
     const handleAddDocument = () => {
-        const isFree = !selectedPackage || selectedPackage === 'free';
+        const isFree = !internalPackage || internalPackage === 'free';
         if (isFree) {
             showAlert('Document uploads are restricted to Premium members. Attach PDFs, DOCs and more to keep all records in one place.', 'info', 'Premium Feature');
             return;
@@ -206,24 +207,69 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
         setFormData(prev => ({ ...prev, documents: prev.documents.filter((_, i) => i !== idx) }));
     };
 
-    const handleFinish = async () => {
+    const saveDraftAndRegister = async (pkg) => {
+        const slug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        const formatDate = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        };
+        const birthStr = formatDate(formData.birthDate);
+        const passingStr = formatDate(formData.passingDate);
+        const dates = (birthStr && passingStr) ? `${birthStr} - ${passingStr}` : birthStr;
+        const photoB64 = formData.photo ? await compressImage(formData.photo, { maxWidth: 600, quality: 0.6 }) : null;
+        const coverB64 = formData.cover ? await compressImage(formData.cover, { maxWidth: 1200, quality: 0.6 }) : null;
+        const fullDraft = {
+            name: formData.name,
+            birthDate: formData.birthDate,
+            passingDate: formData.passingDate,
+            dates,
+            bio: formData.bio,
+            status: formData.status,
+            slug,
+            photo: photoB64,
+            coverUrl: coverB64,
+            videoUrls: formData.videoUrls.filter(url => url.trim() !== ''),
+            isAnniversaryReminder: formData.isAnniversaryReminder,
+            reminderOptions: formData.isAnniversaryReminder === 'yes' ? formData.reminderOptions : [],
+            graveAddress: formData.graveAddress || null,
+            graveLatitude: formData.graveLatitude || null,
+            graveLongitude: formData.graveLongitude || null,
+            showGraveLocation: formData.showGraveLocation,
+            selectedPackage: pkg,
+            images: formData.images,
+            videos: formData.videos,
+            documents: formData.documents
+        };
+        await localforage.setItem('pending_memorial_draft', fullDraft);
+        navigate(`/register?redirect=create-memorial&package=${pkg}`);
+    };
+
+    const handleSelectPlan = async (planKey) => {
+        const token = localStorage.getItem('token');
+        if (token) {
+            setInternalPackage(planKey);
+            await handleFinish(planKey);
+        } else {
+            setSubmitting(true);
+            try {
+                await saveDraftAndRegister(planKey);
+            } catch (err) {
+                showToast('Failed to save draft. Please try again.', 'error');
+                setSubmitting(false);
+            }
+        }
+    };
+
+    const handleFinish = async (pkg) => {
         if (!formData.name) {
             showToast('Please enter a name for the memorial.', 'error');
             return;
         }
 
-        // Check if user is logged in before attempting
-        const token = localStorage.getItem('token');
-        if (!token) {
-            showToast('Please log in to create a memorial.', 'error');
-            return;
-        }
-
         setSubmitting(true);
         try {
-            // Make slug unique by appending timestamp if needed
-            const baseSlug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-            const slug = `${baseSlug}-${Date.now().toString(36)}`;
+            const slug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
             
             // Format dates as "Mar 1, 2026 - Mar 19, 2026"
             const formatDate = (dateStr) => {
@@ -263,12 +309,12 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
             };
 
             // Handle Paid Plans (Premium/Corporate) - Redirect to cart
-            if (selectedPackage && selectedPackage !== 'free') {
+            if (pkg && pkg !== 'free') {
                 const dbProduct = products?.find(p => {
                     const cat = p.category?.toLowerCase() || '';
                     const name = p.name?.toLowerCase() || '';
-                    if (selectedPackage === 'premium') return cat.includes('premium') || cat.includes('lifetime') || name.includes('premium') || name.includes('lifetime');
-                    if (selectedPackage === 'corporate') return cat.includes('corporate') || name.includes('corporate');
+                    if (pkg === 'premium') return cat.includes('premium') || cat.includes('lifetime') || name.includes('premium') || name.includes('lifetime');
+                    if (pkg === 'corporate') return cat.includes('corporate') || name.includes('corporate');
                     return false;
                 });
 
@@ -281,7 +327,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                 // Create a full draft with ALL media files (photo, cover natively in tributeData, gallery added)
                 const fullDraft = { 
                     ...tributeData,
-                    selectedPackage: selectedPackage, // PASS THIS TO DRAFT
+                    selectedPackage: pkg,
                     images: formData.images,
                     videos: formData.videos,
                     documents: formData.documents
@@ -316,23 +362,41 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
             if (createdTribute && createdTribute.id) {
                 const tid = createdTribute.id;
 
-                // Photo and cover are now included natively via tributeData
+                // Convert File to base64 then upload via the proven /tributes/:id/media endpoint
+                const fileToBase64 = (file) => new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
 
-                // Gallery, videos, documents — silent failures OK
+                let uploadErrors = 0;
                 for (const img of formData.images) {
-                    try { await uploadMediaFile(tid, 'image', img, true); } catch (e) { console.warn('Image upload failed:', e.message); }
+                    try {
+                        const b64 = await fileToBase64(img);
+                        await addMedia(tid, 'image', b64, true);
+                    } catch (e) { uploadErrors++; console.warn('Image upload failed:', e.message); }
                 }
                 for (const vid of formData.videos) {
-                    try { await uploadMediaFile(tid, 'video', vid, true); } catch (e) { console.warn('Video upload failed:', e.message); }
+                    try {
+                        const b64 = await fileToBase64(vid);
+                        await addMedia(tid, 'video', b64, true);
+                    } catch (e) { uploadErrors++; console.warn('Video upload failed:', e.message); }
                 }
                 for (const doc of formData.documents) {
-                    if (doc.file) try { await uploadMediaFile(tid, 'document', doc.file, true); } catch (e) { console.warn('Doc upload failed:', e.message); }
+                    if (doc.file) try {
+                        const b64 = await fileToBase64(doc.file);
+                        await addMedia(tid, 'document', b64, true);
+                    } catch (e) { uploadErrors++; console.warn('Doc upload failed:', e.message); }
                 }
 
-                // Refresh context with all uploaded media
                 await fetchTributes().catch(e => console.warn("Refresh failed:", e.message));
 
-                showToast('Memorial created successfully!', 'success');
+                if (uploadErrors > 0) {
+                    showToast(`Memorial created, but ${uploadErrors} file(s) failed to upload. You can add them from the edit page.`, 'warning');
+                } else {
+                    showToast('Memorial created successfully!', 'success');
+                }
                 onClose();
                 navigate('/admin/memorials');
             }
@@ -551,7 +615,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                     </button>
                                 </div>
                             </div>
-                        ) : (
+                        ) : step === 2 ? (
                             <div className="space-y-8 animate-fadeIn">
                                 {/* Life Story Section */}
                                 <div className="space-y-4">
@@ -882,13 +946,130 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                             <FontAwesomeIcon icon={faEye} className="text-sm" /> Preview
                                         </button>
                                         <button
-                                            onClick={handleFinish}
-                                            disabled={submitting}
-                                            className="bg-primary text-white px-10 py-4 rounded-full font-bold flex items-center gap-3 shadow-lg hover:opacity-90 transition-all disabled:opacity-50"
+                                            onClick={() => setStep(3)}
+                                            className="bg-primary text-white px-10 py-4 rounded-full font-bold flex items-center gap-3 shadow-lg hover:opacity-90 transition-all"
                                         >
-                                            {submitting ? 'Creating...' : (selectedPackage && selectedPackage !== 'free' ? 'Add to Cart' : 'Finish')} <FontAwesomeIcon icon={faArrowRight} className="text-sm" />
+                                            Choose Plan <FontAwesomeIcon icon={faArrowRight} className="text-sm" />
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Step 3: Package Selection — full detail cards */
+                            <div className="animate-fadeIn">
+                                <div className="text-center mb-6">
+                                    <h2 className="text-2xl font-bold text-dark font-serif">Choose Your Plan</h2>
+                                    <p className="text-gray-400 text-sm mt-1">Select the plan that fits your needs</p>
+                                </div>
+
+                                {(() => {
+                                    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+                                    const userRole = currentUser.role || 'guest';
+
+                                    const getFeatures = (planKey, dbProduct) => {
+                                        if (dbProduct?.description) {
+                                            const lines = dbProduct.description
+                                                .replace(/<\/p>/g, '\n').replace(/<br\s*\/?>/g, '\n').replace(/<[^>]*>/g, '').trim()
+                                                .split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                                            if (lines.length > 0) return lines;
+                                        }
+                                        const defaults = {
+                                            free: ['Memorial page (public)', 'Personal information and biography', 'Profile / Background picture', 'Link with QR Code', 'Memories (text and 1 photo)', 'Book of condolences', 'Photo gallery (max 10)', 'Location information', 'Links social networks'],
+                                            premium: ['Memorial page (public or private)', 'Person of trust', 'Personal information and biography', 'Profile / Background picture', 'Link with QR Code', 'Memories (text and photos)', 'Reminder (date of birth / death)', 'Book of condolences', 'Photo- / Video and Audio gallery (unlimited)', 'Location information', 'Links social networks', 'Documents (pdf, word)'],
+                                            corporate: ['Company dashboard (logo, short description)', 'Memorial page (public or private)', 'Person of trust', 'Personal information and biography', 'Profile / Background picture', 'Link with QR Code', 'Memories (text and photos)', 'Reminder (date of birth / death)', 'Book of condolences', 'Photo- / Video and Audio gallery (unlimited)', 'Location information', 'Links social networks', 'Documents (pdf, word)']
+                                        };
+                                        return defaults[planKey] || [];
+                                    };
+
+                                    return [
+                                        { key: 'free', label: 'Free', icon: faRocket, color: 'from-blue-500 to-indigo-600', period: '10 years', popular: false },
+                                        { key: 'premium', label: 'Premium', icon: faCrown, color: 'from-amber-400 to-orange-500', period: 'lifetime', popular: true },
+                                        { key: 'corporate', label: 'Corporate Package', icon: faBuilding, color: 'from-gray-700 to-gray-900', period: 'lifetime', popular: false }
+                                    ].map(plan => {
+                                        const isDisabled = (userRole === 'private' && plan.key === 'corporate') ||
+                                                           (userRole === 'company' && plan.key === 'premium');
+                                        const dbProduct = products?.find(p => {
+                                            const cat = p.category?.toLowerCase() || '';
+                                            const name = p.name?.toLowerCase() || '';
+                                            if (plan.key === 'free') return cat === 'free' || name.includes('free');
+                                            if (plan.key === 'premium') return cat.includes('premium') || cat.includes('lifetime') || name.includes('premium') || name.includes('lifetime');
+                                            if (plan.key === 'corporate') return cat.includes('corporate') || name.includes('corporate');
+                                            return false;
+                                        });
+                                        const price = dbProduct ? parseFloat(dbProduct.price).toFixed(2) : (plan.key === 'free' ? '0.00' : '—');
+                                        const features = getFeatures(plan.key, dbProduct);
+                                        const isSelected = internalPackage === plan.key;
+
+                                        return (
+                                            <div
+                                                key={plan.key}
+                                                onClick={() => !isDisabled && setInternalPackage(plan.key)}
+                                                className={`relative rounded-2xl border-2 p-5 mb-4 transition-all
+                                                    ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+                                                    ${isSelected ? 'border-primary bg-primary/5 shadow-md' : 'border-gray-100 bg-white hover:border-primary/40'}
+                                                    ${plan.popular && !isDisabled ? 'shadow-lg' : ''}
+                                                `}
+                                            >
+                                                {isDisabled && (
+                                                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl">
+                                                        <span className="bg-dark/80 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1 rounded-lg">Not available for your role</span>
+                                                    </div>
+                                                )}
+                                                {plan.popular && !isDisabled && (
+                                                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-[9px] font-black uppercase tracking-widest px-4 py-1 rounded-full whitespace-nowrap">Most Popular</span>
+                                                )}
+
+                                                {/* Header row */}
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-white text-base shrink-0`}>
+                                                            <FontAwesomeIcon icon={plan.icon} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-dark text-base">{plan.label}</div>
+                                                            <div className="text-dark font-black text-lg leading-tight">
+                                                                € {price} <span className="text-gray-400 text-xs font-medium">/ {plan.period}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-1 shrink-0 transition-colors ${isSelected ? 'border-primary bg-primary' : 'border-gray-300'}`}>
+                                                        {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                    </div>
+                                                </div>
+
+                                                {/* Divider */}
+                                                <div className="h-px bg-gray-100 mb-3" />
+
+                                                {/* Features */}
+                                                <ul className="space-y-1.5">
+                                                    {features.map((f, i) => (
+                                                        <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
+                                                            <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isSelected ? 'bg-primary/20 text-primary' : 'bg-gray-100 text-gray-400'}`}>
+                                                                <FontAwesomeIcon icon={faCheck} className="text-[8px]" />
+                                                            </div>
+                                                            {f}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+
+                                <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                                    <button
+                                        onClick={() => setStep(2)}
+                                        className="text-gray-400 font-bold hover:text-dark transition-colors px-2 flex items-center gap-2"
+                                    >
+                                        <FontAwesomeIcon icon={faArrowLeft} className="text-sm" /> Back
+                                    </button>
+                                    <button
+                                        onClick={() => internalPackage && handleSelectPlan(internalPackage)}
+                                        disabled={!internalPackage || submitting || (() => { const u = JSON.parse(localStorage.getItem('user') || '{}'); const r = u.role || 'guest'; return (r === 'private' && internalPackage === 'corporate') || (r === 'company' && internalPackage === 'premium'); })()}
+                                        className="bg-primary text-white px-10 py-4 rounded-full font-bold flex items-center gap-3 shadow-lg hover:opacity-90 transition-all disabled:opacity-50"
+                                    >
+                                        {submitting ? 'Please wait...' : 'Continue'} <FontAwesomeIcon icon={faArrowRight} className="text-sm" />
+                                    </button>
                                 </div>
                             </div>
                         )}

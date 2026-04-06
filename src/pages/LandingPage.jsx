@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTributeContext } from '../context/TributeContext';
 import { useLocation, useNavigate } from 'react-router-dom';
+import localforage from 'localforage';
 import Hero from '../components/sections/Hero';
 import Tributes from '../components/sections/Tributes';
 import WhyChoose from '../components/sections/WhyChoose';
@@ -18,30 +19,90 @@ import howItWorksImage from '../assets/images/HowItWorks.png';
 import SEO from '../components/SEO';
 
 const LandingPage = () => {
-    const { pages, addPage, updatePage, tributes, products, addToCart, showToast, showAlert } = useTributeContext();
+    const { pages, addPage, updatePage, products, addToCart, addTribute, addMedia, fetchTributes, showToast } = useTributeContext();
     const location = useLocation();
     const navigate = useNavigate();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedPackage, setSelectedPackage] = useState('free');
+    const [pendingDraftPkg, setPendingDraftPkg] = useState(null);
 
     // Admin Check
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const isAdmin = user.role === 'admin' || user.username === 'admin' || user.email?.includes('admin');
-    const isLoggedIn = !!localStorage.getItem('token') && (!!user.id || !!user.user_id);
 
-    // Central handler for "Create a Tribute" clicks
+
+    // Central handler for "Create a Tribute" clicks — always open modal directly
     const handleOpenCreate = (pkg = 'free') => {
         const selectedPkg = typeof pkg === 'string' ? pkg : 'free';
+        setSelectedPackage(selectedPkg);
+        setIsModalOpen(true);
+    };
 
-        if (isLoggedIn) {
-            setSelectedPackage(selectedPkg);
-            // Already logged in → open the form modal
-            setIsModalOpen(true);
+    // Process a pending memorial draft saved before registration
+    const processPendingDraft = async (pkg) => {
+        const draft = await localforage.getItem('pending_memorial_draft');
+        if (!draft) return;
+        await localforage.removeItem('pending_memorial_draft');
+
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const userId = user.id || user.user_id;
+        const tributeData = {
+            name: draft.name,
+            birthDate: draft.birthDate,
+            passingDate: draft.passingDate,
+            dates: draft.dates,
+            bio: draft.bio,
+            status: draft.status,
+            slug: draft.slug,
+            userId,
+            photo: draft.photo,
+            coverUrl: draft.coverUrl,
+            videoUrls: draft.videoUrls,
+            isAnniversaryReminder: draft.isAnniversaryReminder,
+            reminderOptions: draft.reminderOptions,
+            graveAddress: draft.graveAddress,
+            graveLatitude: draft.graveLatitude,
+            graveLongitude: draft.graveLongitude,
+            showGraveLocation: draft.showGraveLocation
+        };
+
+        if (pkg && pkg !== 'free') {
+            const dbProduct = products?.find(p => {
+                const cat = p.category?.toLowerCase() || '';
+                const name = p.name?.toLowerCase() || '';
+                if (pkg === 'premium') return cat.includes('premium') || cat.includes('lifetime') || name.includes('premium') || name.includes('lifetime');
+                if (pkg === 'corporate') return cat.includes('corporate') || name.includes('corporate');
+                return false;
+            });
+            if (!dbProduct) { showToast('Could not find selected plan. Please try again.', 'error'); return; }
+            const paidDraft = { ...tributeData, selectedPackage: pkg, images: draft.images, videos: draft.videos, documents: draft.documents };
+            await localforage.setItem('pending_memorial_draft', paidDraft);
+            sessionStorage.setItem('pending_memorial_draft', JSON.stringify(tributeData));
+            addToCart(dbProduct, 1, { type: 'memorial_subscription', memorial_name: draft.name, listing: draft.name });
+            navigate('/cart');
         } else {
-            setSelectedPackage(selectedPkg);
-            // Not logged in → go to register, then come back to open modal
-            navigate(`/register?redirect=create-memorial&package=${selectedPkg}`);
+            const created = await addTribute(tributeData);
+            if (created?.id) {
+                const fileToBase64 = (file) => new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+                for (const img of (draft.images || [])) {
+                    try { const b64 = await fileToBase64(img); await addMedia(created.id, 'image', b64, true); } catch {}
+                }
+                for (const vid of (draft.videos || [])) {
+                    try { const b64 = await fileToBase64(vid); await addMedia(created.id, 'video', b64, true); } catch {}
+                }
+                for (const doc of (draft.documents || [])) {
+                    if (doc?.file) try { const b64 = await fileToBase64(doc.file); await addMedia(created.id, 'document', b64, true); } catch {}
+                }
+                if (fetchTributes) await fetchTributes().catch(() => {});
+                showToast('Memorial created successfully!', 'success');
+                navigate('/admin/memorials');
+            }
         }
     };
 
@@ -59,16 +120,24 @@ const LandingPage = () => {
         window.location.reload();
     };
 
-    // Auto-open memorial modal if redirected back from register/login
+    // Step 1: detect processDraft in URL and store pkg in state
     useEffect(() => {
         const params = new URLSearchParams(location.search);
-        if (params.get('openModal') === 'create-memorial') {
+        if (params.get('processDraft') === 'true') {
             const pkg = params.get('package') || 'free';
-            setSelectedPackage(pkg);
-            setIsModalOpen(true);
             window.history.replaceState({}, '', '/');
+            setPendingDraftPkg(pkg);
         }
     }, [location.search]);
+
+    // Step 2: once products are loaded (or for free plan immediately), run the draft processor
+    useEffect(() => {
+        if (!pendingDraftPkg) return;
+        const needsProducts = pendingDraftPkg !== 'free';
+        if (needsProducts && (!products || products.length === 0)) return; // wait for products
+        setPendingDraftPkg(null);
+        processPendingDraft(pendingDraftPkg);
+    }, [pendingDraftPkg, products]);
 
     // Handle smooth scrolling to hash links
     useEffect(() => {
@@ -475,7 +544,7 @@ const LandingPage = () => {
                 <RenderContentWithShortcodes content={homePage.content} />
             ) : (
                 <>
-                    <Hero onOpenModal={handleOpenCreate} />
+                    <Hero onCreateClick={handleOpenCreate} />
                     <Tributes />
                     <WhyChoose />
                     <MemorialCreation onOpenModal={handleOpenCreate} />

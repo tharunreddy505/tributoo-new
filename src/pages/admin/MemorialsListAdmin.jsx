@@ -13,7 +13,14 @@ const getAuthHeaders = () => {
 const MemorialsListAdmin = () => {
     const { tributes, deleteTribute, showAlert } = useTributeContext();
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = user.username === 'admin' || user.email?.includes('admin');
+    const isTrueAdmin = user.role === 'admin' || user.role === 'superadmin' || user.is_super_admin || user.username === 'admin' || user.email?.includes('admin');
+    const isSupport = user.role === 'support';
+    const isAdmin = isTrueAdmin || isSupport;
+    const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+    // For support users, legacy flat 'memorials' perm does NOT grant write access — require explicit CRUD
+    const canCreate = isTrueAdmin || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:c');
+    const canEdit   = isTrueAdmin || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:u');
+    const canDelete = isTrueAdmin || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:d');
     const displayedTributes = isAdmin ? tributes : tributes.filter(t => String(t.userId) === String(user.id) || String(t.user_id) === String(user.id));
     const hasActiveSubscription = isAdmin || user.subscriptionStatus === 'active';
 
@@ -66,7 +73,7 @@ const MemorialsListAdmin = () => {
                         />
                     </div>
 
-                    {isAdmin ? (
+                    {canCreate ? (
                         <Link
                             to="/admin/memorials/new"
                             className="bg-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-opacity-90 transition-colors flex items-center gap-2"
@@ -167,30 +174,34 @@ const MemorialsListAdmin = () => {
                                         >
                                             <FontAwesomeIcon icon={faEye} />
                                         </Link>
-                                        <Link
-                                            to={`/admin/memorials/edit/${tribute.id}`}
-                                            className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-green-600 transition-colors"
-                                            title="Edit"
-                                        >
-                                            <FontAwesomeIcon icon={faEdit} />
-                                        </Link>
-                                        <button
-                                            className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                                            title="Delete"
-                                            onClick={() => {
-                                                showAlert(
-                                                    "Are you sure you want to delete this memorial? This will permanently remove all associated photos, videos, and guestbook entries.",
-                                                    "error",
-                                                    "Confirm Deletion",
-                                                    () => deleteTribute(tribute.id),
-                                                    null,
-                                                    "Delete Memorial",
-                                                    "Cancel"
-                                                );
-                                            }}
-                                        >
-                                            <FontAwesomeIcon icon={faTrash} />
-                                        </button>
+                                        {canEdit && (
+                                            <Link
+                                                to={`/admin/memorials/edit/${tribute.id}`}
+                                                className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-green-600 transition-colors"
+                                                title="Edit"
+                                            >
+                                                <FontAwesomeIcon icon={faEdit} />
+                                            </Link>
+                                        )}
+                                        {canDelete && (
+                                            <button
+                                                className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                                                title="Delete"
+                                                onClick={() => {
+                                                    showAlert(
+                                                        "Are you sure you want to delete this memorial? This will permanently remove all associated photos, videos, and guestbook entries.",
+                                                        "error",
+                                                        "Confirm Deletion",
+                                                        () => deleteTribute(tribute.id),
+                                                        null,
+                                                        "Delete Memorial",
+                                                        "Cancel"
+                                                    );
+                                                }}
+                                            >
+                                                <FontAwesomeIcon icon={faTrash} />
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

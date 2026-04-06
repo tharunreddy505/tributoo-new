@@ -3,7 +3,7 @@ import { faPlay } from '@fortawesome/free-solid-svg-icons';
 import { useTranslation } from 'react-i18next';
 import heroImage from '../../assets/images/hero-image.png';
 
-const Hero = () => {
+const Hero = ({ onCreateClick }) => {
     const { t } = useTranslation();
 
     return (
@@ -29,7 +29,7 @@ const Hero = () => {
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                     <button
-                        onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
+                        onClick={() => onCreateClick ? onCreateClick('free') : document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
                         className="bg-white text-dark px-8 py-3 rounded-full font-medium hover:bg-opacity-100 transition-all flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95"
                     >
                         {t('hero.cta_create')}

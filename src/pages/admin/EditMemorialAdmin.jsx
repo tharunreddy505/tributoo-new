@@ -78,7 +78,7 @@ const SortablePhoto = ({ id, src, onRemove, index }) => {
 const EditMemorialAdmin = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { tributes, updateTribute, addMedia, uploadMediaFile, removeMedia, fetchTributes, fetchMedia, isInitialized, showToast, showAlert, reorderMedia, getAuthHeaders } = useTributeContext();
+    const { tributes, updateTribute, addMedia, uploadMediaFile, updateMediaDetails, removeMedia, fetchTributes, fetchMedia, isInitialized, showToast, showAlert, reorderMedia, getAuthHeaders } = useTributeContext();
     const [loading, setLoading] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState('');
     const [activeLang, setActiveLang] = useState('en');
@@ -121,6 +121,8 @@ const EditMemorialAdmin = () => {
     const currentUser = userStr ? JSON.parse(userStr) : null;
     const isAdminUser = currentUser && (
         currentUser.role === 'admin' ||
+        currentUser.role === 'support' ||
+        currentUser.role === 'superadmin' ||
         currentUser.isAdmin ||
         currentUser.username === 'admin' ||
         currentUser.email?.includes('admin')
@@ -158,7 +160,16 @@ const EditMemorialAdmin = () => {
                     bio: baseBio,
                     photo: found.image || found.photo || null,
                     slug: found.slug || '',
-                    images: found.images || [],
+                    images: (found.images || []).filter(img => {
+                        const altText = typeof img === 'object' ? img.alt_text : null;
+                        if (altText === 'Profile Photo' || altText === 'Cover Image') return false;
+                        const url = typeof img === 'object' ? img.url : img;
+                        const photoUrl = found.image || found.photo;
+                        const coverUrl = found.coverUrl;
+                        if (photoUrl && url && url.split('/').pop() === photoUrl.split('/').pop()) return false;
+                        if (coverUrl && url && url.split('/').pop() === coverUrl.split('/').pop()) return false;
+                        return true;
+                    }),
                     videos: found.videos || [],
                     videoUrls: found.videoUrls && found.videoUrls.length > 0 ? found.videoUrls : [''],
                     coverUrl: found.coverUrl || null,
@@ -284,6 +295,8 @@ const EditMemorialAdmin = () => {
                 [type]: [...(prev[type] || []), ...newPreviews]
             }));
         }
+        // Reset input so the same file can be selected again
+        e.target.value = '';
     };
 
     const removeGalleryItem = async (type, index) => {
@@ -516,32 +529,31 @@ const EditMemorialAdmin = () => {
                             }
                         }
                     }
+                }
 
-                    // Process Documents (Update existing + Upload new)
-                    if (formData.documents?.length > 0) {
-                        for (const doc of formData.documents) {
-                            if (doc.isNew && doc.file) {
-                                try {
-                                    const uploadedMedia = await uploadMediaFile(Number(id), 'document', doc.file, true);
-                                    if (uploadedMedia && uploadedMedia.id) {
-                                        await updateMediaDetails(uploadedMedia.id, {
-                                            title: doc.title || '',
-                                            description: doc.description || ''
-                                        });
-                                    }
-                                } catch (err) {
-                                    console.error("Document upload error:", err);
-                                }
-                            } else if (doc.id) {
-                                // Update existing document details
-                                try {
-                                    await updateMediaDetails(doc.id, {
-                                        title: doc.title,
-                                        description: doc.description
+                // Process Documents (always runs — outside image/video gate)
+                if (formData.documents?.length > 0) {
+                    for (const doc of formData.documents) {
+                        if (doc.isNew && doc.file) {
+                            try {
+                                const uploadedMedia = await uploadMediaFile(Number(id), 'document', doc.file, true);
+                                if (uploadedMedia && uploadedMedia.id) {
+                                    await updateMediaDetails(uploadedMedia.id, {
+                                        title: doc.title || '',
+                                        description: doc.description || ''
                                     });
-                                } catch (err) {
-                                    console.error("Document update error:", err);
                                 }
+                            } catch (err) {
+                                console.error("Document upload error:", err);
+                            }
+                        } else if (doc.id) {
+                            try {
+                                await updateMediaDetails(doc.id, {
+                                    title: doc.title,
+                                    description: doc.description
+                                });
+                            } catch (err) {
+                                console.error("Document update error:", err);
                             }
                         }
                     }

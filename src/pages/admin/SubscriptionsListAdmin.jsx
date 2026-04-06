@@ -95,7 +95,7 @@ const Th = ({ children, field, sort, onSort }) => (
 );
 
 // ─── Detail Side Panel ────────────────────────────────────────────────────────
-const DetailPanel = ({ sub, onClose, onEdit, onDelete }) => (
+const DetailPanel = ({ sub, onClose, onEdit, onDelete, isSupport }) => (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
         <div
             className="w-full max-w-md bg-white h-full shadow-2xl overflow-y-auto flex flex-col animate-slide-in"
@@ -226,40 +226,44 @@ const DetailPanel = ({ sub, onClose, onEdit, onDelete }) => (
                 {/* Actions */}
                 <div className="pt-6 border-t border-gray-100 flex flex-col gap-3">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Management</p>
-                    <button
-                        onClick={() => onEdit(sub)}
-                        className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm hover:bg-black transition-all flex items-center justify-center gap-2"
-                    >
-                        <FontAwesomeIcon icon={faPencil} />
-                        {sub._virtual ? 'Create/Edit Record' : 'Edit Subscription'}
-                    </button>
-                    {(sub.status === 'expired' || sub.status === 'trial') && (
+                    {!isSupport && (
+                        <>
                         <button
-                            onClick={() => {
-                                showAlert('Send the expiration/reminder email to this user now?', 'warning', 'Confirmation', async () => {
-                                    try {
-                                        const res = await fetch(`${API_URL}/api/subscriptions/${sub.id}/send-expiry-notice`, {
-                                            method: 'POST',
-                                            headers: getAuthHeaders()
-                                        });
-                                        if (res.ok) showToast('Email sent successfully!');
-                                        else showAlert('Failed to send email.', 'error');
-                                    } catch (e) { showAlert('Error: ' + e.message, 'error'); }
-                                });
-                            }}
-                            className="w-full py-3 rounded-xl border border-amber-200 text-amber-700 font-bold text-sm hover:bg-amber-50 transition-all flex items-center justify-center gap-2"
+                            onClick={() => onEdit(sub)}
+                            className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm hover:bg-black transition-all flex items-center justify-center gap-2"
                         >
-                            <FontAwesomeIcon icon={faEnvelope} />
-                            Resend Expiry Notice
+                            <FontAwesomeIcon icon={faPencil} />
+                            {sub._virtual ? 'Create/Edit Record' : 'Edit Subscription'}
                         </button>
+                        {(sub.status === 'expired' || sub.status === 'trial') && (
+                            <button
+                                onClick={() => {
+                                    showAlert('Send the expiration/reminder email to this user now?', 'warning', 'Confirmation', async () => {
+                                        try {
+                                            const res = await fetch(`${API_URL}/api/subscriptions/${sub.id}/send-expiry-notice`, {
+                                                method: 'POST',
+                                                headers: getAuthHeaders()
+                                            });
+                                            if (res.ok) showToast('Email sent successfully!');
+                                            else showAlert('Failed to send email.', 'error');
+                                        } catch (e) { showAlert('Error: ' + e.message, 'error'); }
+                                    });
+                                }}
+                                className="w-full py-3 rounded-xl border border-amber-200 text-amber-700 font-bold text-sm hover:bg-amber-50 transition-all flex items-center justify-center gap-2"
+                            >
+                                <FontAwesomeIcon icon={faEnvelope} />
+                                Resend Expiry Notice
+                            </button>
+                        )}
+                        <button
+                            onClick={() => onDelete(sub.id)}
+                            className="w-full py-3 rounded-xl border border-red-200 text-red-600 font-bold text-sm hover:bg-red-50 transition-all flex items-center justify-center gap-2"
+                        >
+                            <FontAwesomeIcon icon={faTrash} />
+                            {sub._virtual ? 'Delete Memorial' : 'Delete Record'}
+                        </button>
+                        </>
                     )}
-                    <button
-                        onClick={() => onDelete(sub.id)}
-                        className="w-full py-3 rounded-xl border border-red-200 text-red-600 font-bold text-sm hover:bg-red-50 transition-all flex items-center justify-center gap-2"
-                    >
-                        <FontAwesomeIcon icon={faTrash} />
-                        {sub._virtual ? 'Delete Memorial' : 'Delete Record'}
-                    </button>
                 </div>
             </div>
         </div>
@@ -269,6 +273,8 @@ const DetailPanel = ({ sub, onClose, onEdit, onDelete }) => (
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const SubscriptionsListAdmin = () => {
     const { showAlert, showToast } = useTributeContext();
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const isSupport = currentUser.role === 'support';
     const [subs, setSubs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -606,6 +612,7 @@ const SubscriptionsListAdmin = () => {
                         setIsEditModalOpen(true);
                     }}
                     onDelete={handleDelete}
+                    isSupport={isSupport}
                 />
             )}
 

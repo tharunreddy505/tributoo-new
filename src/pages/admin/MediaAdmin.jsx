@@ -15,7 +15,7 @@ const MediaAdmin = () => {
     const fileInputRef = useRef(null);
 
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = user.username === 'admin' || user.email?.includes('admin');
+    const isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.role === 'support' || user.username === 'admin' || user.email?.includes('admin');
 
     const filteredMedia = media.filter(m => {
         const matchesUser = isAdmin || m.user_id == user.id;

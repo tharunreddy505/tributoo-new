@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTachometerAlt, faBookOpen, faCog, faSignOutAlt, faPlus, faHome, faCommentAlt, faFileAlt, faNewspaper, faImage, faBars, faCode, faUser, faShoppingBag, faBox, faTicketAlt, faCrown, faShieldAlt, faChartLine, faEnvelope } from '@fortawesome/free-solid-svg-icons';
+import { faTachometerAlt, faBookOpen, faCog, faSignOutAlt, faHome, faCommentAlt, faFileAlt, faNewspaper, faImage, faBars, faUser, faShoppingBag, faBox, faTicketAlt, faCrown, faShieldAlt, faChartLine, faEnvelope } from '@fortawesome/free-solid-svg-icons';
 import { useTributeContext } from '../../context/TributeContext';
 
 const LayoutAdmin = () => {
@@ -13,28 +13,38 @@ const LayoutAdmin = () => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const isSuperAdmin = user.is_super_admin === true || user.role === 'superadmin';
     const isAdmin = user.role === 'admin' || isSuperAdmin || user.username === 'admin' || user.email?.includes('admin');
+    const isSupport = user.role === 'support';
 
     const permissions = Array.isArray(user.permissions) ? user.permissions : [];
-    const hasPerm = (p) => isSuperAdmin || permissions.includes(p);
+    // hasPerm: true if user has legacy flat perm OR at least read (:r) for the section
+    const hasPerm = (p) => isSuperAdmin || permissions.includes(p) || permissions.includes(`${p}:r`) || permissions.includes(`${p}:c`) || permissions.includes(`${p}:u`) || permissions.includes(`${p}:d`);
+    // hasWritePerm: true if user can create or update
+    const hasWritePerm = (p) => isSuperAdmin || permissions.includes(p) || permissions.includes(`${p}:c`) || permissions.includes(`${p}:u`);
+    const hasDeletePerm = (p) => isSuperAdmin || permissions.includes(p) || permissions.includes(`${p}:d`);
 
+    // nav item visibility flags:
+    //   adminOnly  — hidden from regular users and support
+    //   superOnly  — hidden from everyone except superadmin
+    //   supportShow — visible to support (in addition to admins)
+    //   supportReadOnly — support can see it but gets a read-only badge
     const navItems = [
-        { label: 'Dashboard', path: '/admin', icon: faTachometerAlt, section: 'Main', perm: 'dashboard', adminOnly: true },
+        { label: 'Dashboard', path: '/admin', icon: faTachometerAlt, section: 'Main', perm: 'dashboard', adminOnly: true, supportShow: true },
         { label: 'My Account', path: '/admin/my-account', icon: faChartLine, section: 'Main', alwaysShow: true },
 
         { label: 'Memorials', path: '/admin/memorials', icon: faBookOpen, section: 'Content', perm: 'memorials', alwaysShow: true },
-        { label: 'Media Library', path: '/admin/media', icon: faImage, section: 'Content', perm: 'media' },
-        { label: 'Pages', path: '/admin/pages', icon: faFileAlt, section: 'Content', perm: 'pages' },
-        { label: 'Blogs', path: '/admin/posts', icon: faNewspaper, section: 'Content', perm: 'posts' },
+        { label: 'Media Library', path: '/admin/media', icon: faImage, section: 'Content', perm: 'media', supportShow: true },
+        { label: 'Pages', path: '/admin/pages', icon: faFileAlt, section: 'Content', perm: 'pages', supportShow: true, supportReadOnly: true },
+        { label: 'Blogs', path: '/admin/posts', icon: faNewspaper, section: 'Content', perm: 'posts', supportShow: true, supportReadOnly: true },
 
-        { label: 'Products', path: '/admin/products', icon: faShoppingBag, section: 'Shop', perm: 'products' },
-        { label: 'Orders', path: '/admin/orders', icon: faBox, section: 'Shop', perm: 'orders' },
-        { label: 'Voucher Templates', path: '/admin/voucher-templates', icon: faTicketAlt, section: 'Shop', perm: 'products' },
-        { label: 'Subscriptions', path: '/admin/subscriptions', icon: faCrown, section: 'Shop', perm: 'subscriptions' },
+        { label: 'Products', path: '/admin/products', icon: faShoppingBag, section: 'Shop', perm: 'products', supportShow: true, supportReadOnly: true },
+        { label: 'Orders', path: '/admin/orders', icon: faBox, section: 'Shop', perm: 'orders', supportShow: true, supportReadOnly: true },
+        { label: 'Voucher Templates', path: '/admin/voucher-templates', icon: faTicketAlt, section: 'Shop', perm: 'products', supportShow: true, supportReadOnly: true },
+        { label: 'Subscriptions', path: '/admin/subscriptions', icon: faCrown, section: 'Shop', perm: 'subscriptions', supportShow: true, supportReadOnly: true },
 
-        { label: 'Menus', path: '/admin/menus', icon: faBars, section: 'Design', perm: 'menus' },
-        { label: 'Condolence Book', path: '/admin/condolences', icon: faCommentAlt, section: 'Design', perm: 'condolences' },
+        { label: 'Menus', path: '/admin/menus', icon: faBars, section: 'Design', perm: 'menus', supportShow: true, supportReadOnly: true },
+        { label: 'Condolence Book', path: '/admin/condolences', icon: faCommentAlt, section: 'Design', perm: 'condolences', supportShow: true },
 
-        { label: 'User Management', path: '/admin/users', icon: faShieldAlt, section: 'System', perm: 'users', superOnly: true },
+        { label: 'User Management', path: '/admin/users', icon: faShieldAlt, section: 'System', perm: 'users', adminOnly: true, supportShow: true },
         { label: 'Email Templates', path: '/admin/email-templates', icon: faEnvelope, section: 'System', perm: 'settings', superOnly: true },
         { label: 'Email Logs', path: '/admin/email-logs', icon: faFileAlt, section: 'System', perm: 'settings', superOnly: true },
         { label: 'System Settings', path: '/admin/settings', icon: faCog, section: 'System', perm: 'settings', superOnly: true },
@@ -54,7 +64,7 @@ const LayoutAdmin = () => {
                         ) : (
                             <>
                                 <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-dark text-sm font-serif font-bold">T</div>
-                                <span>Tributoo {isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin' : 'Portal'}</span>
+                                <span>Tributoo {isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin' : isSupport ? 'Support' : 'Portal'}</span>
                             </>
                         )}
                     </Link>
@@ -65,9 +75,13 @@ const LayoutAdmin = () => {
                     {sections.map(section => {
                         const items = navItems.filter(i => {
                             if (i.section !== section) return false;
+                            // superOnly items: only superadmin can see (not even support)
                             if (i.superOnly && !isSuperAdmin) return false;
+                            // adminOnly items: admin + support can see (if support has the permission)
                             if (i.adminOnly && !isAdmin) return false;
                             if (i.alwaysShow) return true;
+                            // Support: respect Quick Assign permissions (hasPerm) but only for supportShow items
+                            if (isSupport) return i.supportShow && hasPerm(i.perm);
                             return hasPerm(i.perm);
                         });
 
@@ -86,7 +100,10 @@ const LayoutAdmin = () => {
                                                 <div className="w-5 flex justify-center">
                                                     <FontAwesomeIcon icon={item.icon} className="text-sm" />
                                                 </div>
-                                                <span className="text-sm">{item.label}</span>
+                                                <span className="text-sm flex-1">{item.label}</span>
+                                                {isSupport && item.supportReadOnly && (
+                                                    <span className="text-[8px] font-bold uppercase tracking-wide bg-gray-600 text-gray-300 px-1.5 py-0.5 rounded">read</span>
+                                                )}
                                             </Link>
                                         </li>
                                     ))}
