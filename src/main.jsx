@@ -7,7 +7,9 @@ import { TributeProvider } from './context/TributeContext';
 import { HelmetProvider } from 'react-helmet-async';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+// Use placeholder so GoogleOAuthProvider always mounts (avoids hook errors)
+// Replace with real client ID via VITE_GOOGLE_CLIENT_ID env var
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'not-configured';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

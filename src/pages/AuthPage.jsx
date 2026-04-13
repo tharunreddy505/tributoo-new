@@ -18,6 +18,8 @@ import { API_URL } from '../config';
 import { compressImage } from '../utils/imageOptimizer';
 import { useGoogleLogin } from '@react-oauth/google';
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
 const AuthPage = ({ mode = 'login' }) => {
     const { t } = useTranslation();
     const { showAlert } = useTributeContext();
@@ -235,10 +237,10 @@ const AuthPage = ({ mode = 'login' }) => {
         }
     };
 
-    const googleLogin = useGoogleLogin({
-        onSuccess: handleGoogleSuccess,
-        onError: () => showAlert('Google login failed', 'error'),
-    });
+    const _googleLoginHook = useGoogleLogin({ onSuccess: handleGoogleSuccess, onError: () => showAlert('Google login failed', 'error') });
+    const googleLogin = GOOGLE_CLIENT_ID
+        ? _googleLoginHook
+        : () => showAlert('Google Client ID not configured. Add VITE_GOOGLE_CLIENT_ID to your .env file.', 'info', 'Setup Required');
 
     return (
         <Layout>
