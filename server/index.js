@@ -1084,6 +1084,65 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// Google OAuth login/register
+app.post('/api/auth/google', async (req, res) => {
+    try {
+        const { credential, googleAccessToken, email: directEmail, name: directName, googleId: directGoogleId } = req.body;
+
+        let email, name, googleId;
+
+        if (googleAccessToken) {
+            // Access token flow (useGoogleLogin)
+            email = directEmail;
+            name = directName;
+            googleId = directGoogleId;
+            if (!email || !googleId) return res.status(400).json({ error: 'Missing user info' });
+        } else if (credential) {
+            // ID token flow (GoogleLogin component)
+            const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`);
+            const payload = await googleRes.json();
+            if (payload.error) return res.status(400).json({ error: 'Invalid Google token' });
+            email = payload.email;
+            name = payload.name;
+            googleId = payload.sub;
+        } else {
+            return res.status(400).json({ error: 'Missing credential' });
+        }
+
+        // Check if user exists
+        let userRes = await pool.query('SELECT * FROM users WHERE email = $1 OR google_id = $2', [email, googleId]);
+        let user = userRes.rows[0];
+
+        if (!user) {
+            // Auto-register new user
+            const username = (name || email.split('@')[0]).replace(/\s+/g, '_').toLowerCase() + '_' + Math.floor(Math.random() * 1000);
+            const insertRes = await pool.query(
+                `INSERT INTO users (username, email, google_id, role, password_hash, created_at)
+                 VALUES ($1, $2, $3, 'private', '', NOW()) RETURNING *`,
+                [username, email, googleId]
+            );
+            user = insertRes.rows[0];
+        } else if (!user.google_id) {
+            // Link google_id to existing account
+            await pool.query('UPDATE users SET google_id = $1 WHERE id = $2', [googleId, user.id]);
+        }
+
+        const token = jwt.sign(
+            { id: user.id, role: user.role, is_super_admin: user.is_super_admin, permissions: user.permissions || [] },
+            process.env.JWT_SECRET,
+            { expiresIn: '30d' }
+        );
+
+        res.json({
+            token,
+            user: { id: user.id, username: user.username, email: user.email, role: user.role, is_super_admin: user.is_super_admin, permissions: user.permissions || [] }
+        });
+    } catch (err) {
+        console.error('Google Auth Error:', err.message);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
     try {
         const userRes = await pool.query("SELECT id, username, email, role, company_name, company_description, logo_url, is_super_admin, permissions FROM users WHERE id = $1", [req.user.id]);
