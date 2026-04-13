@@ -941,13 +941,13 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                         <button
                                             type="button"
                                             onClick={() => setShowPreview(true)}
-                                            className="border border-primary text-primary px-6 py-4 rounded-full font-bold flex items-center gap-2 hover:bg-primary hover:text-white transition-all"
+                                            className="bg-primary text-white px-6 py-4 rounded-full font-bold flex items-center gap-2 shadow-lg hover:opacity-90 transition-all"
                                         >
                                             <FontAwesomeIcon icon={faEye} className="text-sm" /> Preview
                                         </button>
                                         <button
                                             onClick={() => setStep(3)}
-                                            className="bg-primary text-white px-10 py-4 rounded-full font-bold flex items-center gap-3 shadow-lg hover:opacity-90 transition-all"
+                                            className="border border-primary text-primary px-10 py-4 rounded-full font-bold flex items-center gap-3 hover:bg-primary hover:text-white transition-all"
                                         >
                                             Choose Plan <FontAwesomeIcon icon={faArrowRight} className="text-sm" />
                                         </button>
