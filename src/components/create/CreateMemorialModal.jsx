@@ -983,8 +983,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
 
                                     return [
                                         { key: 'free', label: 'Free', icon: faRocket, color: 'from-blue-500 to-indigo-600', period: '10 years', popular: false },
-                                        { key: 'premium', label: 'Premium', icon: faCrown, color: 'from-amber-400 to-orange-500', period: 'lifetime', popular: true },
-                                        { key: 'corporate', label: 'Corporate Package', icon: faBuilding, color: 'from-gray-700 to-gray-900', period: 'lifetime', popular: false }
+                                        { key: 'premium', label: 'Premium', icon: faCrown, color: 'from-amber-400 to-orange-500', period: 'lifetime', popular: true }
                                     ].map(plan => {
                                         const isDisabled = (userRole === 'private' && plan.key === 'corporate') ||
                                                            (userRole === 'company' && plan.key === 'premium');
