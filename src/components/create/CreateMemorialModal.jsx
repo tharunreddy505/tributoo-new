@@ -663,30 +663,19 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                             )}
                                         </div>
 
-                                        {/* Videos box */}
+                                        {/* Videos box — shown only after premium plan selected */}
+                                        {selectedPackage && selectedPackage !== 'free' && (
                                         <div className="space-y-3">
                                             <input id="gallery-videos" type="file" multiple className="hidden" accept="video/*" onChange={(e) => handleGalleryUpload(e, 'videos')} />
-                                            <div 
-                                                onClick={() => {
-                                                    if (!selectedPackage || selectedPackage === 'free') {
-                                                        showAlert('Video uploads are restricted to Premium members. Update your plan to include moving memories.', 'info', 'Premium Feature');
-                                                        return;
-                                                    }
-                                                    document.getElementById('gallery-videos').click();
-                                                }}
-                                                className={`w-full py-10 rounded-2xl border border-gray-100 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${(!selectedPackage || selectedPackage === 'free') ? 'bg-gray-50 opacity-80 cursor-not-allowed' : 'bg-white hover:border-primary'}`}
+                                            <div
+                                                onClick={() => document.getElementById('gallery-videos').click()}
+                                                className="w-full py-10 rounded-2xl border border-gray-100 bg-white hover:border-primary flex flex-col items-center justify-center gap-3 cursor-pointer transition-all"
                                             >
-                                                <FontAwesomeIcon icon={faVideo} className={`${(!selectedPackage || selectedPackage === 'free') ? 'text-primary/40' : 'text-[#C5C5C5]'} text-2xl`} />
-                                                <div className="text-center">
-                                                    <span className="text-sm font-semibold text-gray-700 block">Add Videos</span>
-                                                    {(!selectedPackage || selectedPackage === 'free') && (
-                                                        <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Premium Feature</span>
-                                                    )}
-                                                </div>
+                                                <FontAwesomeIcon icon={faVideo} className="text-[#C5C5C5] text-2xl" />
+                                                <span className="text-sm font-semibold text-gray-700 block">Add Videos</span>
                                             </div>
 
-                                            {/* Videos Previews (only for non-free) */}
-                                            {previews.videos.length > 0 && selectedPackage && selectedPackage !== 'free' && (
+                                            {previews.videos.length > 0 && (
                                                 <div className="grid grid-cols-4 gap-2">
                                                     {previews.videos.map((url, idx) => (
                                                         <div key={idx} className="relative aspect-square group rounded-lg overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center">
@@ -694,7 +683,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                                             <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                                                                 <FontAwesomeIcon icon={faVideo} className="text-white text-xs opacity-60" />
                                                             </div>
-                                                            <button 
+                                                            <button
                                                                 onClick={(e) => { e.stopPropagation(); removeGalleryItem('videos', idx); }}
                                                                 className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 hover:scale-100 shadow-lg"
                                                             >
@@ -705,111 +694,90 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                                 </div>
                                             )}
                                         </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Video URLs */}
+                                {/* Video URLs — shown only after premium plan selected */}
+                                {selectedPackage && selectedPackage !== 'free' && (
                                 <div className="space-y-4">
                                     <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Video URLs (YouTube, Vimeo, etc.)</h3>
-                                    {(!selectedPackage || selectedPackage === 'free') ? (
-                                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary/40 shadow-sm border border-gray-100">
-                                                <FontAwesomeIcon icon={faLink} />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-600">Video Links Restricted</p>
-                                                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Available in Premium & Corporate</p>
-                                            </div>
+                                    {formData.videoUrls.map((url, idx) => (
+                                        <div key={idx} className="relative group">
+                                            <FontAwesomeIcon icon={faLink} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 text-sm" />
+                                            <input
+                                                value={url}
+                                                onChange={(e) => handleVideoUrlChange(idx, e.target.value)}
+                                                className="w-full pl-12 pr-12 py-4 rounded-xl border border-gray-100 bg-white text-dark placeholder:text-[#ced4da] outline-none focus:border-primary transition-all text-sm"
+                                                placeholder="https://www.youtube.com/watch?v=..."
+                                            />
+                                            {formData.videoUrls.length > 1 && (
+                                                <button
+                                                    onClick={() => setFormData(prev => ({ ...prev, videoUrls: prev.videoUrls.filter((_, i) => i !== idx) }))}
+                                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-500 transition-colors"
+                                                >
+                                                    <FontAwesomeIcon icon={faTrash} className="text-xs" />
+                                                </button>
+                                            )}
                                         </div>
-                                    ) : (
-                                        <>
-                                            {formData.videoUrls.map((url, idx) => (
-                                                <div key={idx} className="relative group">
-                                                    <FontAwesomeIcon icon={faLink} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 text-sm" />
-                                                    <input 
-                                                        value={url}
-                                                        onChange={(e) => handleVideoUrlChange(idx, e.target.value)}
-                                                        className="w-full pl-12 pr-12 py-4 rounded-xl border border-gray-100 bg-white text-dark placeholder:text-[#ced4da] outline-none focus:border-primary transition-all text-sm"
-                                                        placeholder="https://www.youtube.com/watch?v=..."
-                                                    />
-                                                    {formData.videoUrls.length > 1 && (
-                                                        <button 
-                                                            onClick={() => setFormData(prev => ({ ...prev, videoUrls: prev.videoUrls.filter((_, i) => i !== idx) }))}
-                                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <FontAwesomeIcon icon={faTrash} className="text-xs" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            ))}
-                                            <button 
-                                                onClick={handleAddVideoUrl}
-                                                className="flex items-center gap-2 text-[#D4AF37] text-[13px] font-bold hover:underline py-1"
-                                            >
-                                                <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> Add Another Video URL
-                                            </button>
-                                        </>
-                                    )}
+                                    ))}
+                                    <button
+                                        onClick={handleAddVideoUrl}
+                                        className="flex items-center gap-2 text-[#D4AF37] text-[13px] font-bold hover:underline py-1"
+                                    >
+                                        <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> Add Another Video URL
+                                    </button>
                                 </div>
+                                )}
 
-                                {/* Documents */}
+                                {/* Documents — shown only after premium plan selected */}
+                                {selectedPackage && selectedPackage !== 'free' && (
                                 <div className="space-y-4 pt-4 border-t border-gray-100">
                                     <h3 className="text-[13px] font-bold text-gray-800 uppercase tracking-wide">Upload Documents</h3>
-                                    {(!selectedPackage || selectedPackage === 'free') ? (
-                                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-primary/40 shadow-sm border border-gray-100">
-                                                <FontAwesomeIcon icon={faFileAlt} />
+                                    <div className="space-y-3">
+                                        {formData.documents.map((doc, idx) => (
+                                            <div key={idx} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                                                <input
+                                                    type="file"
+                                                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                    onChange={(e) => handleDocumentFileChange(idx, e)}
+                                                    className="text-sm text-gray-600"
+                                                />
+                                                <div className="border-b border-gray-100" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Title"
+                                                    value={doc.title}
+                                                    onChange={(e) => handleDocumentFieldChange(idx, 'title', e.target.value)}
+                                                    className="w-full text-sm text-gray-700 outline-none border-b border-gray-100 pb-2 bg-transparent placeholder-gray-400"
+                                                />
+                                                <div className="border-b border-gray-100" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Description"
+                                                    value={doc.description}
+                                                    onChange={(e) => handleDocumentFieldChange(idx, 'description', e.target.value)}
+                                                    className="w-full text-sm text-gray-700 outline-none border-b border-gray-100 pb-2 bg-transparent placeholder-gray-400"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveDocument(idx)}
+                                                    className="bg-primary text-white text-xs font-bold px-4 py-2 rounded hover:bg-opacity-90 transition-all"
+                                                >
+                                                    REMOVE
+                                                </button>
                                             </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-600">Documents Restricted</p>
-                                                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Upgrade to attach PDF & DOC files</p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {formData.documents.map((doc, idx) => (
-                                                <div key={idx} className="border border-gray-200 rounded-lg p-4 space-y-3">
-                                                    <input
-                                                        type="file"
-                                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                                        onChange={(e) => handleDocumentFileChange(idx, e)}
-                                                        className="text-sm text-gray-600"
-                                                    />
-                                                    <div className="border-b border-gray-100" />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Title"
-                                                        value={doc.title}
-                                                        onChange={(e) => handleDocumentFieldChange(idx, 'title', e.target.value)}
-                                                        className="w-full text-sm text-gray-700 outline-none border-b border-gray-100 pb-2 bg-transparent placeholder-gray-400"
-                                                    />
-                                                    <div className="border-b border-gray-100" />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Description"
-                                                        value={doc.description}
-                                                        onChange={(e) => handleDocumentFieldChange(idx, 'description', e.target.value)}
-                                                        className="w-full text-sm text-gray-700 outline-none border-b border-gray-100 pb-2 bg-transparent placeholder-gray-400"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveDocument(idx)}
-                                                        className="bg-primary text-white text-xs font-bold px-4 py-2 rounded hover:bg-opacity-90 transition-all"
-                                                    >
-                                                        REMOVE
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <button
-                                                type="button"
-                                                onClick={handleAddDocument}
-                                                className="bg-primary text-white text-xs font-bold px-4 py-2 rounded hover:bg-opacity-90 shadow flex items-center gap-2 transition-all"
-                                            >
-                                                <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> ADD DOCUMENT
-                                            </button>
-                                        </div>
-                                    )}
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={handleAddDocument}
+                                            className="bg-primary text-white text-xs font-bold px-4 py-2 rounded hover:bg-opacity-90 shadow flex items-center gap-2 transition-all"
+                                        >
+                                            <FontAwesomeIcon icon={faPlus} className="text-[10px]" /> ADD DOCUMENT
+                                        </button>
+                                    </div>
                                 </div>
+                                )}
 
                                 {/* Grave Location */}
                                 <div className="space-y-4 pt-4 border-t border-gray-100">
