@@ -1139,7 +1139,7 @@ app.post('/api/auth/google', async (req, res) => {
         });
     } catch (err) {
         console.error('Google Auth Error:', err.message);
-        res.status(500).json({ error: 'Server Error' });
+        res.status(500).json({ error: err.message || 'Server Error' });
     }
 });
 
@@ -3971,6 +3971,16 @@ checkAbandonedCheckoutReminders();
         console.log('✅ position column ensured on media');
     } catch (e) {
         console.error('media position column migration error:', e.message);
+    }
+})();
+
+// Add google_id column to users table (for Google OAuth)
+(async () => {
+    try {
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT`);
+        console.log('✅ google_id column ensured on users');
+    } catch (e) {
+        console.error('google_id column migration error:', e.message);
     }
 })();
 
