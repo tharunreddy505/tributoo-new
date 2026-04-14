@@ -324,23 +324,6 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                             </div>
                         ) : (
                             <form onSubmit={handleRegister} className="space-y-4">
-                                {/* Google */}
-                                <button type="button" onClick={googleLogin} className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                                    <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
-                                    Continue with Google
-                                </button>
-
-                                {/* Apple */}
-                                <button type="button" className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                                    <svg width="16" height="18" viewBox="0 0 814 1000"><path fill="currentColor" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-155.5-120.7c-43.3-74.3-84.4-189.8-84.4-299.3 0-181.5 118.1-277.5 234.4-277.5 63.1 0 115.7 41.5 155.5 41.5 38.1 0 98.1-43.5 165.9-43.5 26.5 0 108.2 2.3 166.9 99.5zm-209.7-191.4c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>
-                                    Continue with Apple
-                                </button>
-
-                                <div className="flex items-center gap-3 my-2">
-                                    <div className="flex-1 h-px bg-gray-200" />
-                                    <span className="text-xs text-gray-400 font-medium">or</span>
-                                    <div className="flex-1 h-px bg-gray-200" />
-                                </div>
 
                                 {/* Role */}
                                 <div>
