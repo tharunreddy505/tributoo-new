@@ -736,7 +736,36 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                     <div className="flex items-center gap-3">
                                         <button
                                             type="button"
-                                            onClick={() => {
+                                            onClick={async () => {
+                                                // Save draft to localforage so PricingModal can process it after registration
+                                                try {
+                                                    const slug = (formData.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                                                    const formatDate = (dateStr) => {
+                                                        if (!dateStr) return '';
+                                                        const d = new Date(dateStr);
+                                                        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                                    };
+                                                    const birthStr = formatDate(formData.birthDate);
+                                                    const passingStr = formatDate(formData.passingDate);
+                                                    const dates = (birthStr && passingStr) ? `${birthStr} - ${passingStr}` : birthStr;
+                                                    const photoB64 = formData.photo ? await compressImage(formData.photo, { maxWidth: 600, quality: 0.6 }) : null;
+                                                    const coverB64 = formData.cover ? await compressImage(formData.cover, { maxWidth: 1200, quality: 0.6 }) : null;
+                                                    const draftToSave = {
+                                                        name: formData.name, birthDate: formData.birthDate, passingDate: formData.passingDate,
+                                                        dates, bio: formData.bio, status: formData.status, slug,
+                                                        photo: photoB64, coverUrl: coverB64,
+                                                        videoUrls: (formData.videoUrls || []).filter(u => u && u.trim() !== ''),
+                                                        isAnniversaryReminder: formData.isAnniversaryReminder,
+                                                        reminderOptions: formData.isAnniversaryReminder === 'yes' ? formData.reminderOptions : [],
+                                                        graveAddress: formData.graveAddress || null,
+                                                        graveLatitude: formData.graveLatitude || null,
+                                                        graveLongitude: formData.graveLongitude || null,
+                                                        showGraveLocation: formData.showGraveLocation,
+                                                        selectedPackage: internalPackage || selectedPackage || 'free',
+                                                        images: formData.images, videos: formData.videos, documents: formData.documents
+                                                    };
+                                                    await localforage.setItem('pending_memorial_draft', draftToSave);
+                                                } catch (e) { console.warn('Draft save failed:', e); }
                                                 // Burst confetti from both sides
                                                 confetti({ particleCount: 80, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors: ['#D4AF37', '#FFD700', '#fff', '#FFA500'] });
                                                 confetti({ particleCount: 80, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors: ['#D4AF37', '#FFD700', '#fff', '#FFA500'] });

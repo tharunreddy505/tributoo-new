@@ -95,8 +95,22 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
         return t(`pricing.${planKey}.features`, { returnObjects: true }) || [];
     };
 
-    const handleSelectPlan = (planKey) => {
+    const handleSelectPlan = async (planKey) => {
         setSelectedPlan(planKey);
+        const token = localStorage.getItem('token');
+        if (token) {
+            // User already logged in — process any pending draft directly
+            const localforage = (await import('localforage')).default;
+            const hasDraft = await localforage.getItem('pending_memorial_draft');
+            onClose();
+            if (hasDraft) {
+                navigate(`/?processDraft=true&package=${planKey}`);
+                window.location.reload();
+            } else {
+                navigate('/admin');
+            }
+            return;
+        }
         setStep(planKey === 'corporate' ? 'corporate' : 'register');
     };
 
