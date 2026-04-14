@@ -48,7 +48,13 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 localStorage.setItem('user', JSON.stringify(data.user));
                 window.dispatchEvent(new Event('storage'));
                 onClose();
-                navigate('/admin');
+                const localforage = (await import('localforage')).default;
+                const hasDraft = await localforage.getItem('pending_memorial_draft');
+                if (hasDraft) {
+                    navigate(`/?processDraft=true&package=${selectedPlan || 'free'}`);
+                } else {
+                    navigate('/admin');
+                }
                 window.location.reload();
             } else {
                 showAlert(data.error || 'Google login failed', 'error');
@@ -127,7 +133,17 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 localStorage.setItem('user', JSON.stringify(data.user));
                 window.dispatchEvent(new Event('storage'));
                 setCorpSuccess(true);
-                setTimeout(() => { onClose(); navigate('/admin'); window.location.reload(); }, 2000);
+                setTimeout(async () => {
+                    onClose();
+                    const localforage = (await import('localforage')).default;
+                    const hasDraft = await localforage.getItem('pending_memorial_draft');
+                    if (hasDraft) {
+                        navigate(`/?processDraft=true&package=${selectedPlan || 'corporate'}`);
+                    } else {
+                        navigate('/admin');
+                    }
+                    window.location.reload();
+                }, 2000);
             } else {
                 setCorpErrors({ email: data.error || 'Registration failed' });
             }
@@ -166,7 +182,17 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 localStorage.setItem('user', JSON.stringify(data.user));
                 window.dispatchEvent(new Event('storage'));
                 setSuccess(true);
-                setTimeout(() => { onClose(); navigate('/admin'); window.location.reload(); }, 1500);
+                setTimeout(async () => {
+                    onClose();
+                    const localforage = (await import('localforage')).default;
+                    const hasDraft = await localforage.getItem('pending_memorial_draft');
+                    if (hasDraft) {
+                        navigate(`/?processDraft=true&package=${selectedPlan || 'free'}`);
+                    } else {
+                        navigate('/admin');
+                    }
+                    window.location.reload();
+                }, 1500);
             } else {
                 setErrors({ email: data.error || 'Registration failed' });
             }
