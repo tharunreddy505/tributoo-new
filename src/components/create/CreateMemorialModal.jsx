@@ -519,65 +519,8 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                         </div>
                                     </div>
 
-                                    {/* Anniversary Table-like fields */}
-                                    <div className="space-y-3">
-                                        <Label>Anniversary of death <span className="text-gray-400 normal-case font-normal">(optional)</span></Label>
-                                        <div className="border border-primary border-opacity-40 rounded-2xl overflow-hidden bg-white">
-                                            <div 
-                                                className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 border-b border-primary border-opacity-10 last:border-0"
-                                                onClick={() => setFormData(prev => ({ ...prev, isAnniversaryReminder: 'yes' }))}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${formData.isAnniversaryReminder === 'yes' ? 'bg-white border-primary' : 'border-gray-300'}`}>
-                                                        {formData.isAnniversaryReminder === 'yes' && <div className="w-2.5 h-2.5 bg-primary rounded-sm" />}
-                                                    </div>
-                                                    <span className="text-sm font-semibold text-gray-600">Yes</span>
-                                                </div>
-                                            </div>
-                                            <div 
-                                                className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
-                                                onClick={() => setFormData(prev => ({ ...prev, isAnniversaryReminder: 'no', reminderOptions: [] }))}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${formData.isAnniversaryReminder === 'no' ? 'bg-white border-primary' : 'border-gray-300'}`}>
-                                                        {formData.isAnniversaryReminder === 'no' && <div className="w-2.5 h-2.5 bg-primary rounded-sm" />}
-                                                    </div>
-                                                    <span className="text-sm font-semibold text-gray-600">No</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Reminder Options (Conditional) */}
-                                    {formData.isAnniversaryReminder === 'yes' && (
-                                        <div className="space-y-3 animate-fadeIn">
-                                            <h3 className="text-[13px] font-bold text-gray-800 tracking-tight">Reminder Options <span className="text-gray-400 normal-case font-normal">(optional)</span></h3>
-                                            <div className="border border-primary border-opacity-40 rounded-2xl overflow-hidden bg-white">
-                                                {[
-                                                    { id: 'month', label: 'One month before' },
-                                                    { id: 'week', label: 'One week before' },
-                                                    { id: 'day', label: 'One day before' },
-                                                    { id: 'anniversary', label: 'On anniversary day' }
-                                                ].map((opt, idx, arr) => (
-                                                    <div 
-                                                        key={opt.id}
-                                                        className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 transition-colors ${idx !== arr.length - 1 ? 'border-b border-primary border-opacity-10' : ''}`}
-                                                        onClick={() => {
-                                                            const newReminders = formData.reminderOptions.includes(opt.id)
-                                                                ? formData.reminderOptions.filter(r => r !== opt.id)
-                                                                : [...formData.reminderOptions, opt.id];
-                                                            setFormData(prev => ({ ...prev, reminderOptions: newReminders }));
-                                                        }}
-                                                    >
-                                                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${formData.reminderOptions.includes(opt.id) ? 'bg-white border-primary' : 'border-gray-300'}`}>
-                                                            {formData.reminderOptions.includes(opt.id) && <div className="w-2.5 h-2.5 bg-primary rounded-sm" />}
-                                                        </div>
-                                                        <span className="text-sm font-semibold text-gray-600">{opt.label}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* Anniversary of death — hidden */}
+                                    {/* Reminder Options — hidden */}
 
                                     {/* Publication Status */}
                                     <div className="space-y-3 pt-2">
