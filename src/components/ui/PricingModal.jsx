@@ -233,7 +233,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
 
                                             {/* Features */}
                                             <ul className="space-y-1.5 mb-4 flex-1">
-                                                {Array.isArray(features) && features.slice(0, 6).map((feature, idx) => (
+                                                {Array.isArray(features) && features.map((feature, idx) => (
                                                     <li key={idx} className="flex items-start gap-2">
                                                         <span className={`mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-black ${isPopular ? 'bg-primary text-white' : isCorporate ? 'bg-slate-500 text-white' : 'bg-gray-200 text-gray-500'}`}>✓</span>
                                                         <span className="text-gray-500 text-[11px] leading-snug">{feature}</span>
