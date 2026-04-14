@@ -3,7 +3,7 @@
 // To deploy in production, set VITE_API_URL in your environment variables (e.g. Vercel, Netlify)
 // Example: VITE_API_URL=https://api.yourdomain.com
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://13.234.38.148:5000';
+export const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Helper to get full API path
 export const getApiUrl = (endpoint) => {
