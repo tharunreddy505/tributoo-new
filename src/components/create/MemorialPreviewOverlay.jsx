@@ -5,7 +5,7 @@ import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 import TranslatedText from '../TranslatedText';
 import PricingModal from '../ui/PricingModal';
 
-const MemorialPreviewOverlay = ({ isOpen, onClose, data }) => {
+const MemorialPreviewOverlay = ({ isOpen, onClose, data, selectedPackage }) => {
     const [activeSection, setActiveSection] = useState('life-story');
     const [guestbookIndex, setGuestbookIndex] = useState(0);
     const [showPricingModal, setShowPricingModal] = useState(false);
@@ -92,7 +92,7 @@ const MemorialPreviewOverlay = ({ isOpen, onClose, data }) => {
                 </div>
             </div>
 
-            <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} />
+            <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} selectedPackage={selectedPackage} />
 
             {/* Close Button Floating */}
             <button 

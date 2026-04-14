@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCheck, faRocket, faCrown, faTimes, faEye, faEyeSlash, faUser } from '@fortawesome/free-solid-svg-icons';
+import { faCheck, faRocket, faCrown, faTimes, faEye, faEyeSlash, faUser, faBuilding } from '@fortawesome/free-solid-svg-icons';
 import { useTranslation } from 'react-i18next';
 import { useTributeContext } from '../../context/TributeContext';
 import { useGoogleLogin } from '@react-oauth/google';
@@ -9,7 +9,7 @@ import { API_URL } from '../../config';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
-const PricingModal = ({ isOpen, onClose }) => {
+const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
     const { t } = useTranslation();
     const { products, showAlert } = useTributeContext();
     const navigate = useNavigate();
@@ -67,10 +67,16 @@ const PricingModal = ({ isOpen, onClose }) => {
         });
     };
 
-    const plans = [
+    const allPlans = [
         { key: 'free', icon: faRocket, color: 'from-blue-500 to-indigo-600', popular: false },
         { key: 'premium', icon: faCrown, color: 'from-amber-400 to-orange-500', popular: true },
+        { key: 'corporate', icon: faBuilding, color: 'from-slate-500 to-slate-700', popular: false },
     ];
+
+    // Show only corporate plan if user selected corporate package, otherwise show free + premium
+    const plans = selectedPackage === 'corporate'
+        ? allPlans.filter(p => p.key === 'corporate')
+        : allPlans.filter(p => p.key !== 'corporate');
 
     const getFeaturesList = (planKey, dbProduct) => {
         if (dbProduct && dbProduct.description) {

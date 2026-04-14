@@ -874,6 +874,7 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
         <MemorialPreviewOverlay
             isOpen={showPreview}
             onClose={() => setShowPreview(false)}
+            selectedPackage={internalPackage || selectedPackage}
             data={{
                 name: formData.name,
                 birthDate: formData.birthDate,
