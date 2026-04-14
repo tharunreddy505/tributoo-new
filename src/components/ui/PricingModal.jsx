@@ -173,50 +173,80 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 {/* ── STEP 1: Plans ── */}
                 {step === 'plans' && (
                     <>
-                        <div className="text-center pt-10 pb-6 px-8">
-                            <h2 className="text-3xl font-serif font-bold text-gray-900 mb-2">Choose Your Plan</h2>
-                            <p className="text-gray-500 text-sm">Select a plan to publish your memorial page</p>
+                        {/* Header */}
+                        <div className="relative text-center pt-10 pb-5 px-8">
+                            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[11px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
+                                🚀 Publish Your Memorial
+                            </div>
+                            <h2 className="text-2xl font-serif font-bold text-gray-900 mb-1">Choose Your Plan</h2>
+                            <p className="text-gray-400 text-xs">Select a plan to make your memorial page live</p>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 px-8 pb-10">
+
+                        {/* Plan Cards */}
+                        <div className="flex flex-col gap-4 px-6 pb-8">
                             {plans.map((plan) => {
                                 const dbProduct = getProductForPlan(plan.key);
                                 const features = getFeaturesList(plan.key, dbProduct);
                                 const price = dbProduct ? parseFloat(dbProduct.price).toFixed(2) : t(`pricing.${plan.key}.price`);
                                 const period = t(`pricing.${plan.key}.period`);
+                                const isCorporate = plan.key === 'corporate';
+                                const isPopular = plan.popular;
                                 return (
-                                    <div key={plan.key} className={`relative flex flex-col p-7 rounded-2xl border-2 transition-all ${plan.popular ? 'border-primary shadow-xl shadow-primary/10 scale-[1.02]' : 'border-gray-100 bg-gray-50/50 hover:border-gray-200 hover:bg-white'}`}>
-                                        {plan.popular && (
-                                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] px-5 py-1.5 rounded-full shadow whitespace-nowrap">Most Popular</div>
+                                    <div key={plan.key} className={`relative rounded-2xl overflow-hidden transition-all duration-200 hover:scale-[1.01] ${isPopular ? 'ring-2 ring-primary shadow-xl shadow-primary/10' : isCorporate ? 'ring-2 ring-slate-400 shadow-lg' : 'border border-gray-200 shadow-sm hover:shadow-md'}`}>
+                                        {isPopular && (
+                                            <div className="bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] text-center py-1.5">
+                                                ✦ Most Popular
+                                            </div>
                                         )}
-                                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-white text-xl mb-5 shadow`}>
-                                            <FontAwesomeIcon icon={plan.icon} />
-                                        </div>
-                                        <h3 className="text-xl font-bold text-gray-900 font-serif mb-1">{t(`pricing.${plan.key}.title`)}</h3>
-                                        <div className="flex items-baseline gap-1 mb-4">
-                                            <span className="text-3xl font-black text-gray-900">€ {price}</span>
-                                            <span className="text-gray-400 text-xs font-medium">/ {period}</span>
-                                        </div>
-                                        <div className="h-px w-full bg-gray-100 mb-4" />
-                                        <ul className="space-y-2.5 mb-6 flex-grow">
-                                            {Array.isArray(features) && features.slice(0, 6).map((feature, idx) => (
-                                                <li key={idx} className="flex items-start gap-2.5">
-                                                    <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${plan.popular ? 'bg-primary/20 text-primary' : 'bg-gray-200 text-gray-400'}`}>
-                                                        <FontAwesomeIcon icon={faCheck} className="text-[9px]" />
+                                        {isCorporate && (
+                                            <div className="text-white text-[10px] font-black uppercase tracking-[0.2em] text-center py-1.5" style={{ background: 'linear-gradient(90deg,#334155,#475569)' }}>
+                                                🏢 Enterprise Plan
+                                            </div>
+                                        )}
+
+                                        <div className={`p-5 ${isPopular ? 'bg-white' : isCorporate ? 'bg-slate-50' : 'bg-white'}`}>
+                                            {/* Top row: icon + name + price */}
+                                            <div className="flex items-center gap-4 mb-4">
+                                                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-white shrink-0 shadow-md`}>
+                                                    <FontAwesomeIcon icon={plan.icon} className="text-base" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="text-base font-bold text-gray-900 leading-tight">{t(`pricing.${plan.key}.title`)}</h3>
+                                                    <div className="flex items-baseline gap-1 mt-0.5">
+                                                        <span className={`text-xl font-black ${isPopular ? 'text-primary' : isCorporate ? 'text-slate-700' : 'text-gray-800'}`}>€ {price}</span>
+                                                        <span className="text-gray-400 text-[11px]">/ {period}</span>
                                                     </div>
-                                                    <span className="text-gray-600 text-xs font-medium leading-relaxed">{feature}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                        <button
-                                            onClick={() => handleSelectPlan(plan.key)}
-                                            className={`w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 ${plan.popular ? 'bg-primary text-white shadow-lg shadow-primary/20 hover:opacity-90' : 'bg-white text-gray-800 border border-gray-200 hover:border-gray-800 hover:bg-gray-900 hover:text-white'}`}
-                                        >
-                                            {t(`pricing.${plan.key}.button`)}
-                                        </button>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleSelectPlan(plan.key)}
+                                                    className={`shrink-0 px-5 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all active:scale-95 hover:scale-105 ${isPopular ? 'bg-primary text-white shadow-lg shadow-primary/25 hover:opacity-90' : isCorporate ? 'text-white shadow-lg hover:opacity-90' : 'bg-gray-900 text-white hover:bg-gray-700'}`}
+                                                    style={isCorporate ? { background: 'linear-gradient(135deg,#334155,#475569)' } : {}}
+                                                >
+                                                    {isCorporate ? 'Contact' : 'Select'}
+                                                </button>
+                                            </div>
+
+                                            {/* Divider */}
+                                            <div className={`h-px mb-3 ${isPopular ? 'bg-primary/10' : 'bg-gray-100'}`} />
+
+                                            {/* Features */}
+                                            <ul className="grid grid-cols-1 gap-y-1.5">
+                                                {Array.isArray(features) && features.slice(0, 6).map((feature, idx) => (
+                                                    <li key={idx} className="flex items-center gap-2">
+                                                        <span className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black ${isPopular ? 'bg-primary text-white' : isCorporate ? 'bg-slate-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                                            ✓
+                                                        </span>
+                                                        <span className="text-gray-600 text-xs leading-snug">{feature}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
+
+                        <p className="text-center text-gray-400 text-[11px] pb-6">No credit card required for free plan</p>
                     </>
                 )}
 
