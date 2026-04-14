@@ -408,7 +408,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                     <div className="px-8 pt-8 pb-10">
                         {/* Tabs */}
                         <div className="flex gap-6 mb-6">
-                            <button onClick={() => setStep('register')} className="text-gray-400 font-bold text-lg pb-1 hover:text-gray-600 transition-colors">Register</button>
+                            <button onClick={() => setStep(selectedPlan === 'corporate' ? 'corporate' : 'register')} className="text-gray-400 font-bold text-lg pb-1 hover:text-gray-600 transition-colors">Register</button>
                             <button className="text-primary font-bold text-lg border-b-2 border-primary pb-1">Login</button>
                         </div>
 
