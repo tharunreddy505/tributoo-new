@@ -22,6 +22,37 @@ const PricingModal = ({ isOpen, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
 
+    // Hooks must be called before any early return
+    const handleGoogleSuccess = async (tokenResponse) => {
+        try {
+            const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+            });
+            const userInfo = await userInfoRes.json();
+            const res = await fetch(`${API_URL}/api/auth/google`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ googleAccessToken: tokenResponse.access_token, email: userInfo.email, name: userInfo.name, googleId: userInfo.sub })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                window.dispatchEvent(new Event('storage'));
+                onClose();
+                navigate('/admin');
+                window.location.reload();
+            } else {
+                showAlert(data.error || 'Google login failed', 'error');
+            }
+        } catch {
+            showAlert('Google login failed', 'error');
+        }
+    };
+
+    const _googleHook = useGoogleLogin({ onSuccess: handleGoogleSuccess, onError: () => showAlert('Google login failed', 'error') });
+    const googleLogin = GOOGLE_CLIENT_ID ? _googleHook : () => showAlert('Google Client ID not configured', 'info');
+
     if (!isOpen) return null;
 
     const getProductForPlan = (key) => {
@@ -87,36 +118,6 @@ const PricingModal = ({ isOpen, onClose }) => {
             setLoading(false);
         }
     };
-
-    const handleGoogleSuccess = async (tokenResponse) => {
-        try {
-            const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-            });
-            const userInfo = await userInfoRes.json();
-            const res = await fetch(`${API_URL}/api/auth/google`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ googleAccessToken: tokenResponse.access_token, email: userInfo.email, name: userInfo.name, googleId: userInfo.sub })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                localStorage.setItem('token', data.token);
-                localStorage.setItem('user', JSON.stringify(data.user));
-                window.dispatchEvent(new Event('storage'));
-                onClose();
-                navigate('/admin');
-                window.location.reload();
-            } else {
-                showAlert(data.error || 'Google login failed', 'error');
-            }
-        } catch {
-            showAlert('Google login failed', 'error');
-        }
-    };
-
-    const _googleHook = useGoogleLogin({ onSuccess: handleGoogleSuccess, onError: () => showAlert('Google login failed', 'error') });
-    const googleLogin = GOOGLE_CLIENT_ID ? _googleHook : () => showAlert('Google Client ID not configured', 'info');
 
     const handleClose = () => { setStep('plans'); setSelectedPlan(null); setErrors({}); setSuccess(false); onClose(); };
 
