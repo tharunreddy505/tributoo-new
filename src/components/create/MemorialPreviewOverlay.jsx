@@ -60,22 +60,34 @@ const MemorialPreviewOverlay = ({ isOpen, onClose, data }) => {
             `}} />
 
             {/* Preview Banner */}
-            <div className="sticky top-0 z-[110] bg-gray-900 py-3 px-6 flex items-center justify-between gap-4 shadow-lg">
-                <span className="flex-1 text-center text-white text-[11px] tracking-[0.25em] uppercase font-bold">
-                    👁 Preview Mode — This is how your page will look
-                </span>
-                <div className="flex items-center gap-3 shrink-0">
+            <div className="sticky top-0 z-[110] flex items-center justify-between gap-4 px-6 py-3 shadow-2xl"
+                style={{ background: 'linear-gradient(90deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}>
+                {/* Left: badge */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="flex items-center gap-1.5 bg-white/10 border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1.5 rounded-full backdrop-blur-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"></span>
+                        Live Preview
+                    </span>
+                </div>
+                {/* Center: label */}
+                <p className="flex-1 text-center text-white/60 text-[11px] tracking-[0.3em] uppercase font-semibold hidden sm:block">
+                    This is how your memorial page will look
+                </p>
+                {/* Right: actions */}
+                <div className="flex items-center gap-2.5 shrink-0">
                     <button
                         onClick={() => setShowPricingModal(true)}
-                        className="bg-primary text-white px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-lg"
+                        className="relative overflow-hidden flex items-center gap-2 px-5 py-2 rounded-full text-[11px] font-black uppercase tracking-widest text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+                        style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #f5c842 50%, #b8972a 100%)', boxShadow: '0 4px 20px rgba(212,175,55,0.45)' }}
                     >
-                        🚀 Publish Page
+                        <span>🚀</span>
+                        <span>Publish Page</span>
                     </button>
                     <button
                         onClick={onClose}
-                        className="bg-white text-gray-900 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[11px] font-black uppercase tracking-widest text-white/70 border border-white/20 hover:border-white/50 hover:text-white bg-white/5 hover:bg-white/10 transition-all"
                     >
-                        Exit Preview
+                        ✕ Exit
                     </button>
                 </div>
             </div>
