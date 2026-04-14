@@ -3,10 +3,12 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes, faHeart, faBookOpen, faPlay, faPen, faShareNodes, faChevronLeft, faChevronRight, faQuoteLeft, faLink, faGlobe, faMapMarkerAlt, faCompass } from '@fortawesome/free-solid-svg-icons';
 import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
 import TranslatedText from '../TranslatedText';
+import PricingModal from '../ui/PricingModal';
 
 const MemorialPreviewOverlay = ({ isOpen, onClose, data }) => {
     const [activeSection, setActiveSection] = useState('life-story');
     const [guestbookIndex, setGuestbookIndex] = useState(0);
+    const [showPricingModal, setShowPricingModal] = useState(false);
     const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
     const { isLoaded } = useJsApiLoader({
@@ -58,15 +60,25 @@ const MemorialPreviewOverlay = ({ isOpen, onClose, data }) => {
             `}} />
 
             {/* Preview Banner */}
-            <div className="preview-banner sticky top-0 z-[110] py-2 text-center text-[10px] tracking-[0.2em] text-dark/80 uppercase font-bold shadow-sm flex items-center justify-center gap-4">
-                <span>PREVIEW MODE - This is how your page will look</span>
-                <button 
-                    onClick={onClose}
-                    className="bg-dark text-white px-3 py-1 rounded-full text-[8px] hover:bg-black transition-colors"
-                >
-                    EXIT PREVIEW
-                </button>
+            <div className="preview-banner sticky top-0 z-[110] py-2 px-4 text-[10px] tracking-[0.2em] text-dark/80 uppercase font-bold shadow-sm flex items-center justify-between gap-4">
+                <span className="flex-1 text-center">PREVIEW MODE - This is how your page will look</span>
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={() => setShowPricingModal(true)}
+                        className="bg-primary text-white px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow"
+                    >
+                        🚀 Publish Page
+                    </button>
+                    <button
+                        onClick={onClose}
+                        className="bg-dark text-white px-3 py-1 rounded-full text-[8px] hover:bg-black transition-colors"
+                    >
+                        EXIT PREVIEW
+                    </button>
+                </div>
             </div>
+
+            <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} />
 
             {/* Close Button Floating */}
             <button 
