@@ -186,12 +186,6 @@ const Navbar = () => {
                         )}
                     </Link>
                     <LanguageSwitcher />
-                    <button
-                        onClick={() => setShowPricingModal(true)}
-                        className="bg-primary text-white px-5 py-2 rounded-full font-bold text-sm hover:opacity-90 transition-all shadow-lg"
-                    >
-                        Publish Page
-                    </button>
                     {user ? (
                         <Link to="/admin" className="bg-white text-dark px-6 py-2 rounded-full font-bold text-sm hover:bg-opacity-90 transition-all shadow-lg">
                             Dashboard
@@ -261,12 +255,6 @@ const Navbar = () => {
                             {t('menu.login')}
                         </Link>
                     )}
-                    <button
-                        onClick={() => { setIsOpen(false); setShowPricingModal(true); }}
-                        className="bg-primary text-white text-center py-3 rounded-full font-bold"
-                    >
-                        Publish Page
-                    </button>
                 </div>
             )}
 
