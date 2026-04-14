@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import confetti from 'canvas-confetti';
 import localforage from 'localforage';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -735,7 +736,12 @@ const CreateMemorialModal = ({ isOpen, onClose, selectedPackage }) => {
                                     <div className="flex items-center gap-3">
                                         <button
                                             type="button"
-                                            onClick={() => setShowPreview(true)}
+                                            onClick={() => {
+                                                // Burst confetti from both sides
+                                                confetti({ particleCount: 80, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors: ['#D4AF37', '#FFD700', '#fff', '#FFA500'] });
+                                                confetti({ particleCount: 80, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors: ['#D4AF37', '#FFD700', '#fff', '#FFA500'] });
+                                                setTimeout(() => setShowPreview(true), 800);
+                                            }}
                                             className="bg-primary text-white px-6 py-4 rounded-full font-bold flex items-center gap-2 shadow-lg hover:opacity-90 transition-all"
                                         >
                                             <FontAwesomeIcon icon={faEye} className="text-sm" /> Create Memorial Page
