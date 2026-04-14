@@ -14,7 +14,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
     const { products, showAlert } = useTributeContext();
     const navigate = useNavigate();
 
-    const [step, setStep] = useState('plans'); // 'plans' | 'register'
+    const [step, setStep] = useState('plans'); // 'plans' | 'register' | 'login' | 'corporate'
     const [selectedPlan, setSelectedPlan] = useState(null);
     const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({ username: '', email: '', password: '', termsAccepted: false });
@@ -25,6 +25,10 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
     const [loginErrors, setLoginErrors] = useState({});
     const [loginLoading, setLoginLoading] = useState(false);
     const [showLoginPassword, setShowLoginPassword] = useState(false);
+    const [corpData, setCorpData] = useState({ companyName: '', contactName: '', email: '', phone: '', employees: '', message: '' });
+    const [corpErrors, setCorpErrors] = useState({});
+    const [corpLoading, setCorpLoading] = useState(false);
+    const [corpSuccess, setCorpSuccess] = useState(false);
 
     // Hooks must be called before any early return
     const handleGoogleSuccess = async (tokenResponse) => {
@@ -87,7 +91,44 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
 
     const handleSelectPlan = (planKey) => {
         setSelectedPlan(planKey);
-        setStep('register');
+        setStep(planKey === 'corporate' ? 'corporate' : 'register');
+    };
+
+    const handleCorpInput = (e) => {
+        const { name, value } = e.target;
+        setCorpData(prev => ({ ...prev, [name]: value }));
+        if (corpErrors[name]) setCorpErrors(prev => ({ ...prev, [name]: null }));
+    };
+
+    const handleCorporateRegister = async (e) => {
+        e.preventDefault();
+        const newErrors = {};
+        if (!corpData.companyName) newErrors.companyName = 'Company name is required';
+        if (!corpData.contactName) newErrors.contactName = 'Contact name is required';
+        if (!corpData.email) newErrors.email = 'Email is required';
+        if (Object.keys(newErrors).length > 0) { setCorpErrors(newErrors); return; }
+        setCorpLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: corpData.companyName, email: corpData.email, password: Math.random().toString(36).slice(-10), role: 'corporate', contactName: corpData.contactName, phone: corpData.phone, employees: corpData.employees, message: corpData.message, termsAccepted: true })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                window.dispatchEvent(new Event('storage'));
+                setCorpSuccess(true);
+                setTimeout(() => { onClose(); navigate('/admin'); window.location.reload(); }, 2000);
+            } else {
+                setCorpErrors({ email: data.error || 'Registration failed' });
+            }
+        } catch {
+            showAlert('Server connection failed', 'error');
+        } finally {
+            setCorpLoading(false);
+        }
     };
 
     const handleInput = (e) => {
@@ -160,7 +201,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
         }
     };
 
-    const handleClose = () => { setStep('plans'); setSelectedPlan(null); setErrors({}); setSuccess(false); setLoginErrors({}); setLoginData({ username: '', password: '' }); onClose(); };
+    const handleClose = () => { setStep('plans'); setSelectedPlan(null); setErrors({}); setSuccess(false); setLoginErrors({}); setLoginData({ username: '', password: '' }); setCorpData({ companyName: '', contactName: '', email: '', phone: '', employees: '', message: '' }); setCorpErrors({}); setCorpSuccess(false); onClose(); };
 
     return (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -413,6 +454,100 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                                 ← Back to plans
                             </button>
                         </form>
+                    </div>
+                )}
+
+                {/* ── STEP 4: Corporate Registration ── */}
+                {step === 'corporate' && (
+                    <div className="px-8 pt-8 pb-10">
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm shadow-md" style={{ background: 'linear-gradient(135deg,#334155,#475569)' }}>
+                                <FontAwesomeIcon icon={faBuilding} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900">Corporate Registration</h2>
+                                <p className="text-xs text-gray-400">Tell us about your company</p>
+                            </div>
+                        </div>
+
+                        {corpSuccess ? (
+                            <div className="text-center py-10">
+                                <div className="text-5xl mb-4">🏢</div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Request Received!</h3>
+                                <p className="text-gray-500 text-sm">Our sales team will contact you shortly.</p>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleCorporateRegister} className="space-y-4">
+                                {/* Company Name */}
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Company Name <span className="text-red-400">*</span></label>
+                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
+                                        <input name="companyName" value={corpData.companyName} onChange={handleCorpInput} placeholder="e.g. Acme Corporation" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
+                                    </div>
+                                    {corpErrors.companyName && <p className="text-red-500 text-xs mt-1">{corpErrors.companyName}</p>}
+                                </div>
+
+                                {/* Contact Name */}
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Contact Person <span className="text-red-400">*</span></label>
+                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
+                                        <input name="contactName" value={corpData.contactName} onChange={handleCorpInput} placeholder="Full name" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
+                                    </div>
+                                    {corpErrors.contactName && <p className="text-red-500 text-xs mt-1">{corpErrors.contactName}</p>}
+                                </div>
+
+                                {/* Email + Phone side by side */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600 block mb-1">Business Email <span className="text-red-400">*</span></label>
+                                        <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
+                                            <input name="email" type="email" value={corpData.email} onChange={handleCorpInput} placeholder="you@company.com" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
+                                        </div>
+                                        {corpErrors.email && <p className="text-red-500 text-xs mt-1">{corpErrors.email}</p>}
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600 block mb-1">Phone</label>
+                                        <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
+                                            <input name="phone" value={corpData.phone} onChange={handleCorpInput} placeholder="+1 234 567 890" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Company Size */}
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Company Size</label>
+                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
+                                        <select name="employees" value={corpData.employees} onChange={handleCorpInput} className="w-full text-sm text-gray-700 outline-none bg-transparent">
+                                            <option value="">Select company size</option>
+                                            <option value="1-10">1–10 employees</option>
+                                            <option value="11-50">11–50 employees</option>
+                                            <option value="51-200">51–200 employees</option>
+                                            <option value="201-500">201–500 employees</option>
+                                            <option value="500+">500+ employees</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Message */}
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Message (optional)</label>
+                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
+                                        <textarea name="message" value={corpData.message} onChange={handleCorpInput} placeholder="Tell us about your needs..." rows={3} className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent resize-none" />
+                                    </div>
+                                </div>
+
+                                {/* Submit */}
+                                <button type="submit" disabled={corpLoading} className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest text-white flex items-center justify-center gap-2 hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 shadow-lg" style={{ background: 'linear-gradient(135deg,#334155,#475569)' }}>
+                                    <FontAwesomeIcon icon={faBuilding} />
+                                    {corpLoading ? 'Submitting...' : 'Submit Request'}
+                                </button>
+
+                                <button type="button" onClick={() => setStep('plans')} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 font-semibold hover:underline mt-1">
+                                    ← Back to plans
+                                </button>
+                            </form>
+                        )}
                     </div>
                 )}
             </div>
