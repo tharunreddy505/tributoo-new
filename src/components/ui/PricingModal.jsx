@@ -25,7 +25,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
     const [loginErrors, setLoginErrors] = useState({});
     const [loginLoading, setLoginLoading] = useState(false);
     const [showLoginPassword, setShowLoginPassword] = useState(false);
-    const [corpData, setCorpData] = useState({ companyName: '', contactName: '', email: '', phone: '', employees: '', message: '' });
+    const [corpData, setCorpData] = useState({ companyName: '', email: '', password: '', isVisible: 'No', logoFile: null, logoPreview: '', description: '', termsAccepted: false });
     const [corpErrors, setCorpErrors] = useState({});
     const [corpLoading, setCorpLoading] = useState(false);
     const [corpSuccess, setCorpSuccess] = useState(false);
@@ -104,16 +104,23 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
         e.preventDefault();
         const newErrors = {};
         if (!corpData.companyName) newErrors.companyName = 'Company name is required';
-        if (!corpData.contactName) newErrors.contactName = 'Contact name is required';
         if (!corpData.email) newErrors.email = 'Email is required';
+        if (!corpData.password) newErrors.password = 'Password is required';
+        if (!corpData.termsAccepted) newErrors.terms = 'Please accept the terms';
         if (Object.keys(newErrors).length > 0) { setCorpErrors(newErrors); return; }
         setCorpLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: corpData.companyName, email: corpData.email, password: Math.random().toString(36).slice(-10), role: 'corporate', contactName: corpData.contactName, phone: corpData.phone, employees: corpData.employees, message: corpData.message, termsAccepted: true })
-            });
+            const body = new FormData();
+            body.append('username', corpData.companyName);
+            body.append('email', corpData.email);
+            body.append('password', corpData.password);
+            body.append('role', 'company');
+            body.append('isVisible', corpData.isVisible);
+            body.append('description', corpData.description);
+            body.append('termsAccepted', corpData.termsAccepted);
+            if (corpData.logoFile) body.append('logo', corpData.logoFile);
+
+            const res = await fetch(`${API_URL}/api/auth/register`, { method: 'POST', body });
             const data = await res.json();
             if (res.ok) {
                 localStorage.setItem('token', data.token);
@@ -201,7 +208,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
         }
     };
 
-    const handleClose = () => { setStep('plans'); setSelectedPlan(null); setErrors({}); setSuccess(false); setLoginErrors({}); setLoginData({ username: '', password: '' }); setCorpData({ companyName: '', contactName: '', email: '', phone: '', employees: '', message: '' }); setCorpErrors({}); setCorpSuccess(false); onClose(); };
+    const handleClose = () => { setStep('plans'); setSelectedPlan(null); setErrors({}); setSuccess(false); setLoginErrors({}); setLoginData({ username: '', password: '' }); setCorpData({ companyName: '', email: '', password: '', isVisible: 'No', logoFile: null, logoPreview: '', description: '', termsAccepted: false }); setCorpErrors({}); setCorpSuccess(false); onClose(); };
 
     return (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -460,90 +467,129 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 {/* ── STEP 4: Corporate Registration ── */}
                 {step === 'corporate' && (
                     <div className="px-8 pt-8 pb-10">
-                        {/* Header */}
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm shadow-md" style={{ background: 'linear-gradient(135deg,#334155,#475569)' }}>
-                                <FontAwesomeIcon icon={faBuilding} />
-                            </div>
-                            <div>
-                                <h2 className="text-lg font-bold text-gray-900">Corporate Registration</h2>
-                                <p className="text-xs text-gray-400">Tell us about your company</p>
-                            </div>
+                        {/* Tabs */}
+                        <div className="flex gap-6 mb-6">
+                            <button onClick={() => setStep('register')} className="text-gray-400 font-bold text-lg pb-1 hover:text-gray-600 transition-colors">Register</button>
+                            <button onClick={() => setStep('login')} className="text-gray-400 font-bold text-lg pb-1 hover:text-gray-600 transition-colors">Login</button>
                         </div>
 
                         {corpSuccess ? (
                             <div className="text-center py-10">
-                                <div className="text-5xl mb-4">🏢</div>
-                                <h3 className="text-xl font-bold text-gray-900 mb-2">Request Received!</h3>
-                                <p className="text-gray-500 text-sm">Our sales team will contact you shortly.</p>
+                                <div className="text-5xl mb-4">🎉</div>
+                                <h3 className="text-xl font-bold text-gray-900 mb-2">Account Created!</h3>
+                                <p className="text-gray-500 text-sm">Redirecting to your dashboard...</p>
                             </div>
                         ) : (
-                            <form onSubmit={handleCorporateRegister} className="space-y-4">
-                                {/* Company Name */}
+                            <form onSubmit={handleCorporateRegister} className="space-y-5">
+                                {/* Choose role */}
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Company Name <span className="text-red-400">*</span></label>
-                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
-                                        <input name="companyName" value={corpData.companyName} onChange={handleCorpInput} placeholder="e.g. Acme Corporation" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">Choose role</p>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-5 h-5 rounded-full border-2 border-primary bg-primary flex items-center justify-center">
+                                            <div className="w-2 h-2 rounded-full bg-white" />
+                                        </div>
+                                        <span className="text-sm font-semibold text-gray-700">Company</span>
+                                    </div>
+                                </div>
+
+                                {/* Company Name */}
+                                <div className="space-y-1 group">
+                                    <label className="text-sm font-medium text-gray-500 pl-1 transition-colors group-focus-within:text-primary">Enter your company name</label>
+                                    <div className={`border-b pb-2 transition-all ${corpErrors.companyName ? 'border-red-500' : 'border-gray-200 group-focus-within:border-primary'}`}>
+                                        <input name="companyName" value={corpData.companyName} onChange={handleCorpInput} className="w-full py-1 bg-transparent outline-none text-gray-800 text-sm" />
                                     </div>
                                     {corpErrors.companyName && <p className="text-red-500 text-xs mt-1">{corpErrors.companyName}</p>}
                                 </div>
 
-                                {/* Contact Name */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Contact Person <span className="text-red-400">*</span></label>
-                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
-                                        <input name="contactName" value={corpData.contactName} onChange={handleCorpInput} placeholder="Full name" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
+                                {/* Email */}
+                                <div className="space-y-1 group">
+                                    <label className="text-sm font-medium text-gray-500 pl-1 transition-colors group-focus-within:text-primary">Enter your email address</label>
+                                    <div className={`border-b pb-2 transition-all ${corpErrors.email ? 'border-red-500' : 'border-gray-200 group-focus-within:border-primary'}`}>
+                                        <input name="email" type="email" value={corpData.email} onChange={handleCorpInput} className="w-full py-1 bg-transparent outline-none text-gray-800 text-sm" />
                                     </div>
-                                    {corpErrors.contactName && <p className="text-red-500 text-xs mt-1">{corpErrors.contactName}</p>}
+                                    {corpErrors.email && <p className="text-red-500 text-xs mt-1">{corpErrors.email}</p>}
                                 </div>
 
-                                {/* Email + Phone side by side */}
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-600 block mb-1">Business Email <span className="text-red-400">*</span></label>
-                                        <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
-                                            <input name="email" type="email" value={corpData.email} onChange={handleCorpInput} placeholder="you@company.com" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
-                                        </div>
-                                        {corpErrors.email && <p className="text-red-500 text-xs mt-1">{corpErrors.email}</p>}
+                                {/* Password */}
+                                <div className="space-y-1 group">
+                                    <label className="text-sm font-medium text-gray-500 pl-1">Password</label>
+                                    <div className={`border-b pb-2 flex items-center transition-all ${corpErrors.password ? 'border-red-500' : 'border-gray-200 group-focus-within:border-primary'}`}>
+                                        <input name="password" type={showPassword ? 'text' : 'password'} value={corpData.password} onChange={handleCorpInput} className="w-full py-1 bg-transparent outline-none text-gray-800 text-sm" />
+                                        <button type="button" onClick={() => setShowPassword(p => !p)} className="text-gray-400 ml-2 shrink-0">
+                                            <FontAwesomeIcon icon={showPassword ? faEyeSlash : faEye} className="text-sm" />
+                                        </button>
                                     </div>
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-600 block mb-1">Phone</label>
-                                        <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
-                                            <input name="phone" value={corpData.phone} onChange={handleCorpInput} placeholder="+1 234 567 890" className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent" />
-                                        </div>
-                                    </div>
+                                    {corpErrors.password && <p className="text-red-500 text-xs mt-1">{corpErrors.password}</p>}
                                 </div>
 
-                                {/* Company Size */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Company Size</label>
-                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
-                                        <select name="employees" value={corpData.employees} onChange={handleCorpInput} className="w-full text-sm text-gray-700 outline-none bg-transparent">
-                                            <option value="">Select company size</option>
-                                            <option value="1-10">1–10 employees</option>
-                                            <option value="11-50">11–50 employees</option>
-                                            <option value="51-200">51–200 employees</option>
-                                            <option value="201-500">201–500 employees</option>
-                                            <option value="500+">500+ employees</option>
+                                {/* Visible */}
+                                <div className="space-y-1 group">
+                                    <label className="text-sm font-medium text-gray-500 pl-1">Visible</label>
+                                    <div className="border-b border-gray-200 pb-2 relative">
+                                        <select name="isVisible" value={corpData.isVisible} onChange={handleCorpInput} className="w-full py-1 bg-transparent outline-none text-gray-800 text-sm appearance-none">
+                                            <option value="No">No</option>
+                                            <option value="Yes">Yes</option>
                                         </select>
+                                        <div className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 text-xs">▼</div>
                                     </div>
                                 </div>
 
-                                {/* Message */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-600 block mb-1">Message (optional)</label>
-                                    <div className="border border-gray-200 rounded-xl px-4 py-3 focus-within:border-slate-400 transition-colors">
-                                        <textarea name="message" value={corpData.message} onChange={handleCorpInput} placeholder="Tell us about your needs..." rows={3} className="w-full text-sm text-gray-700 outline-none placeholder-gray-400 bg-transparent resize-none" />
+                                {/* Logo Upload */}
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-500 pl-1">Upload your logo</label>
+                                    <div
+                                        onClick={() => document.getElementById('corp-logo-upload').click()}
+                                        className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-200 rounded-2xl cursor-pointer hover:border-primary transition-colors group/upload"
+                                    >
+                                        <input id="corp-logo-upload" type="file" accept="image/*" className="hidden" onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (!file) return;
+                                            if (file.size > 5 * 1024 * 1024) { setCorpErrors(p => ({ ...p, logo: 'File size should be less than 5MB' })); return; }
+                                            setCorpData(p => ({ ...p, logoFile: file, logoPreview: URL.createObjectURL(file) }));
+                                            setCorpErrors(p => ({ ...p, logo: null }));
+                                        }} />
+                                        {corpData.logoPreview ? (
+                                            <img src={corpData.logoPreview} alt="Logo" className="max-h-24 object-contain" />
+                                        ) : (
+                                            <>
+                                                <div className="w-12 h-12 bg-primary/10 flex items-center justify-center rounded-xl mb-3 group-hover/upload:scale-110 transition-transform">
+                                                    <FontAwesomeIcon icon={faUser} className="text-primary" />
+                                                </div>
+                                                <p className="text-xs text-gray-400">Maximum file size: 5MB</p>
+                                            </>
+                                        )}
+                                    </div>
+                                    {corpErrors.logo && <p className="text-red-500 text-xs">{corpErrors.logo}</p>}
+                                </div>
+
+                                {/* Description */}
+                                <div className="space-y-1 group">
+                                    <label className="text-sm font-medium text-gray-500 pl-1 transition-colors group-focus-within:text-primary">Brief description of your company (you can also edit this later)</label>
+                                    <div className="border-b border-gray-200 group-focus-within:border-primary pb-2 transition-all">
+                                        <textarea name="description" value={corpData.description} onChange={handleCorpInput} rows={3} className="w-full py-1 bg-transparent outline-none text-gray-800 text-sm resize-none" />
                                     </div>
                                 </div>
+
+                                {/* Terms */}
+                                <div className="flex items-start gap-2">
+                                    <input type="checkbox" name="termsAccepted" checked={corpData.termsAccepted} onChange={e => setCorpData(p => ({ ...p, termsAccepted: e.target.checked }))} className="mt-0.5 accent-primary" />
+                                    <span className="text-xs text-gray-600">I agree to your <a href="/terms" target="_blank" className="text-primary font-semibold">terms and conditions.</a></span>
+                                </div>
+                                {corpErrors.terms && <p className="text-red-500 text-xs">{corpErrors.terms}</p>}
+
+                                <p className="text-[10px] text-gray-400 leading-relaxed">
+                                    We use your personal information to provide you with the best possible experience on our website, to manage your account access, and for other purposes explained in our <a href="/privacy" target="_blank" className="text-primary">privacy policy.</a>
+                                </p>
 
                                 {/* Submit */}
-                                <button type="submit" disabled={corpLoading} className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest text-white flex items-center justify-center gap-2 hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 shadow-lg" style={{ background: 'linear-gradient(135deg,#334155,#475569)' }}>
-                                    <FontAwesomeIcon icon={faBuilding} />
-                                    {corpLoading ? 'Submitting...' : 'Submit Request'}
+                                <button type="submit" disabled={corpLoading} className="w-full bg-primary text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 transition-all active:scale-95 disabled:opacity-60">
+                                    <FontAwesomeIcon icon={faUser} />
+                                    {corpLoading ? 'Registering...' : 'Register'}
                                 </button>
 
-                                <button type="button" onClick={() => setStep('plans')} className="w-full text-center text-xs text-gray-400 hover:text-gray-600 font-semibold hover:underline mt-1">
+                                <p className="text-center text-xs text-gray-400">Try it now – <span className="font-semibold text-gray-600">no credit card required</span></p>
+
+                                <button type="button" onClick={() => setStep('plans')} className="w-full text-center text-xs text-primary font-semibold hover:underline mt-1">
                                     ← Back to plans
                                 </button>
                             </form>
