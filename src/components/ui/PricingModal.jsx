@@ -164,7 +164,7 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
 
     return (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {/* Close */}
                 <button onClick={handleClose} className="absolute top-4 right-4 w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors z-10">
                     <FontAwesomeIcon icon={faTimes} className="text-gray-500 text-sm" />
@@ -174,16 +174,16 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 {step === 'plans' && (
                     <>
                         {/* Header */}
-                        <div className="relative text-center pt-10 pb-5 px-8">
-                            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[11px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
+                        <div className="text-center pt-9 pb-5 px-8">
+                            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3">
                                 🚀 Publish Your Memorial
                             </div>
                             <h2 className="text-2xl font-serif font-bold text-gray-900 mb-1">Choose Your Plan</h2>
                             <p className="text-gray-400 text-xs">Select a plan to make your memorial page live</p>
                         </div>
 
-                        {/* Plan Cards */}
-                        <div className="flex flex-col gap-4 px-6 pb-8">
+                        {/* Plan Cards — side by side */}
+                        <div className={`grid gap-4 px-5 pb-6 items-stretch ${plans.length === 1 ? 'grid-cols-1 max-w-xs mx-auto' : 'grid-cols-2'}`}>
                             {plans.map((plan) => {
                                 const dbProduct = getProductForPlan(plan.key);
                                 const features = getFeaturesList(plan.key, dbProduct);
@@ -191,62 +191,71 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                                 const period = t(`pricing.${plan.key}.period`);
                                 const isCorporate = plan.key === 'corporate';
                                 const isPopular = plan.popular;
+
                                 return (
-                                    <div key={plan.key} className={`relative rounded-2xl overflow-hidden transition-all duration-200 hover:scale-[1.01] ${isPopular ? 'ring-2 ring-primary shadow-xl shadow-primary/10' : isCorporate ? 'ring-2 ring-slate-400 shadow-lg' : 'border border-gray-200 shadow-sm hover:shadow-md'}`}>
+                                    <div key={plan.key} className={`relative flex flex-col rounded-2xl overflow-hidden transition-all duration-200 hover:scale-[1.02] ${isPopular ? 'ring-2 ring-primary shadow-xl shadow-primary/15' : isCorporate ? 'ring-2 ring-slate-300 shadow-lg' : 'border border-gray-200 shadow-sm hover:shadow-lg'}`}>
+
+                                        {/* Top accent bar */}
                                         {isPopular && (
-                                            <div className="bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] text-center py-1.5">
+                                            <div className="bg-primary text-white text-[9px] font-black uppercase tracking-[0.18em] text-center py-1.5 shrink-0">
                                                 ✦ Most Popular
                                             </div>
                                         )}
                                         {isCorporate && (
-                                            <div className="text-white text-[10px] font-black uppercase tracking-[0.2em] text-center py-1.5" style={{ background: 'linear-gradient(90deg,#334155,#475569)' }}>
-                                                🏢 Enterprise Plan
+                                            <div className="text-white text-[9px] font-black uppercase tracking-[0.18em] text-center py-1.5 shrink-0" style={{ background: 'linear-gradient(90deg,#334155,#475569)' }}>
+                                                🏢 Enterprise
+                                            </div>
+                                        )}
+                                        {!isPopular && !isCorporate && (
+                                            <div className="bg-gray-50 text-gray-400 text-[9px] font-black uppercase tracking-[0.18em] text-center py-1.5 shrink-0 border-b border-gray-100">
+                                                Standard
                                             </div>
                                         )}
 
-                                        <div className={`p-5 ${isPopular ? 'bg-white' : isCorporate ? 'bg-slate-50' : 'bg-white'}`}>
-                                            {/* Top row: icon + name + price */}
-                                            <div className="flex items-center gap-4 mb-4">
-                                                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-white shrink-0 shadow-md`}>
-                                                    <FontAwesomeIcon icon={plan.icon} className="text-base" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <h3 className="text-base font-bold text-gray-900 leading-tight">{t(`pricing.${plan.key}.title`)}</h3>
-                                                    <div className="flex items-baseline gap-1 mt-0.5">
-                                                        <span className={`text-xl font-black ${isPopular ? 'text-primary' : isCorporate ? 'text-slate-700' : 'text-gray-800'}`}>€ {price}</span>
-                                                        <span className="text-gray-400 text-[11px]">/ {period}</span>
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleSelectPlan(plan.key)}
-                                                    className={`shrink-0 px-5 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all active:scale-95 hover:scale-105 ${isPopular ? 'bg-primary text-white shadow-lg shadow-primary/25 hover:opacity-90' : isCorporate ? 'text-white shadow-lg hover:opacity-90' : 'bg-gray-900 text-white hover:bg-gray-700'}`}
-                                                    style={isCorporate ? { background: 'linear-gradient(135deg,#334155,#475569)' } : {}}
-                                                >
-                                                    {isCorporate ? 'Contact' : 'Select'}
-                                                </button>
+                                        {/* Card body */}
+                                        <div className={`flex flex-col flex-1 p-4 ${isCorporate ? 'bg-slate-50' : 'bg-white'}`}>
+                                            {/* Icon */}
+                                            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-white shadow-md mb-3`}>
+                                                <FontAwesomeIcon icon={plan.icon} className="text-sm" />
+                                            </div>
+
+                                            {/* Name */}
+                                            <h3 className="text-sm font-bold text-gray-900 mb-1">{t(`pricing.${plan.key}.title`)}</h3>
+
+                                            {/* Price */}
+                                            <div className="flex items-baseline gap-1 mb-3">
+                                                <span className={`text-2xl font-black ${isPopular ? 'text-primary' : isCorporate ? 'text-slate-700' : 'text-gray-800'}`}>€{price}</span>
+                                                <span className="text-gray-400 text-[10px]">/{period}</span>
                                             </div>
 
                                             {/* Divider */}
-                                            <div className={`h-px mb-3 ${isPopular ? 'bg-primary/10' : 'bg-gray-100'}`} />
+                                            <div className={`h-px mb-3 ${isPopular ? 'bg-primary/15' : 'bg-gray-100'}`} />
 
                                             {/* Features */}
-                                            <ul className="grid grid-cols-1 gap-y-1.5">
+                                            <ul className="space-y-1.5 mb-4 flex-1">
                                                 {Array.isArray(features) && features.slice(0, 6).map((feature, idx) => (
-                                                    <li key={idx} className="flex items-center gap-2">
-                                                        <span className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black ${isPopular ? 'bg-primary text-white' : isCorporate ? 'bg-slate-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                                                            ✓
-                                                        </span>
-                                                        <span className="text-gray-600 text-xs leading-snug">{feature}</span>
+                                                    <li key={idx} className="flex items-start gap-2">
+                                                        <span className={`mt-0.5 shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-black ${isPopular ? 'bg-primary text-white' : isCorporate ? 'bg-slate-500 text-white' : 'bg-gray-200 text-gray-500'}`}>✓</span>
+                                                        <span className="text-gray-500 text-[11px] leading-snug">{feature}</span>
                                                     </li>
                                                 ))}
                                             </ul>
+
+                                            {/* CTA Button */}
+                                            <button
+                                                onClick={() => handleSelectPlan(plan.key)}
+                                                className={`w-full py-2.5 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all active:scale-95 hover:opacity-90 ${isPopular ? 'bg-primary text-white shadow-md shadow-primary/25' : isCorporate ? 'text-white shadow-md' : 'bg-gray-900 text-white'}`}
+                                                style={isCorporate ? { background: 'linear-gradient(135deg,#334155,#475569)' } : {}}
+                                            >
+                                                {isCorporate ? 'Contact Sales' : t(`pricing.${plan.key}.button`)}
+                                            </button>
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
 
-                        <p className="text-center text-gray-400 text-[11px] pb-6">No credit card required for free plan</p>
+                        <p className="text-center text-gray-400 text-[10px] pb-5">No credit card required for free plan</p>
                     </>
                 )}
 
