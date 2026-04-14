@@ -1720,7 +1720,7 @@ app.post('/api/tributes', authenticateToken, async (req, res) => {
         const newTribute = await pool.query(
             "INSERT INTO tributes (name, dates, birth_date, passing_date, bio, photo_url, cover_url, slug, user_id, video_urls, status, is_anniversary_reminder, reminder_options, grave_address, grave_latitude, grave_longitude, show_grave_location) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *",
             [
-                name, dates, birthDate, passingDate, bio, photoUrl, finalCoverUrl || null, finalSlug, userId || null, 
+                name, dates, birthDate, passingDate, bio, photoUrl, finalCoverUrl || null, finalSlug, userId || req.user?.id || null,
                 JSON.stringify(videoUrls || []), status || 'public', isAnniversaryReminder || 'no', 
                 JSON.stringify(reminderOptions || []), graveAddress, graveLatitude, graveLongitude, 
                 showGraveLocation !== undefined ? showGraveLocation : true

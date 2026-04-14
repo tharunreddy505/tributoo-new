@@ -51,11 +51,10 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                 const localforage = (await import('localforage')).default;
                 const hasDraft = await localforage.getItem('pending_memorial_draft');
                 if (hasDraft) {
-                    navigate(`/?processDraft=true&package=${selectedPlan || 'free'}`);
+                    window.location.href = `/?processDraft=true&package=${selectedPlan || 'free'}`;
                 } else {
-                    navigate('/admin');
+                    window.location.href = '/admin';
                 }
-                window.location.reload();
             } else {
                 showAlert(data.error || 'Google login failed', 'error');
             }
@@ -104,10 +103,9 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
             const hasDraft = await localforage.getItem('pending_memorial_draft');
             onClose();
             if (hasDraft) {
-                navigate(`/?processDraft=true&package=${planKey}`);
-                window.location.reload();
+                window.location.href = `/?processDraft=true&package=${planKey}`;
             } else {
-                navigate('/admin');
+                window.location.href = '/admin';
             }
             return;
         }
@@ -152,11 +150,10 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                     const localforage = (await import('localforage')).default;
                     const hasDraft = await localforage.getItem('pending_memorial_draft');
                     if (hasDraft) {
-                        navigate(`/?processDraft=true&package=${selectedPlan || 'corporate'}`);
+                        window.location.href = `/?processDraft=true&package=${selectedPlan || 'corporate'}`;
                     } else {
-                        navigate('/admin');
+                        window.location.href = '/admin';
                     }
-                    window.location.reload();
                 }, 2000);
             } else {
                 setCorpErrors({ email: data.error || 'Registration failed' });
@@ -201,11 +198,10 @@ const PricingModal = ({ isOpen, onClose, selectedPackage }) => {
                     const localforage = (await import('localforage')).default;
                     const hasDraft = await localforage.getItem('pending_memorial_draft');
                     if (hasDraft) {
-                        navigate(`/?processDraft=true&package=${selectedPlan || 'free'}`);
+                        window.location.href = `/?processDraft=true&package=${selectedPlan || 'free'}`;
                     } else {
-                        navigate('/admin');
+                        window.location.href = '/admin';
                     }
-                    window.location.reload();
                 }, 1500);
             } else {
                 setErrors({ email: data.error || 'Registration failed' });
