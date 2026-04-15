@@ -17,10 +17,12 @@ const MemorialsListAdmin = () => {
     const isSupport = user.role === 'support';
     const isAdmin = isTrueAdmin || isSupport;
     const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+    const isPrivateUser = !isAdmin && (user.role === 'private' || user.role === 'company' || (!user.role));
     // For support users, legacy flat 'memorials' perm does NOT grant write access — require explicit CRUD
-    const canCreate = isTrueAdmin || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:c');
-    const canEdit   = isTrueAdmin || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:u');
-    const canDelete = isTrueAdmin || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:d');
+    // Private/company users can always create, edit and delete their own memorials
+    const canCreate = isTrueAdmin || isPrivateUser || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:c');
+    const canEdit   = isTrueAdmin || isPrivateUser || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:u');
+    const canDelete = isTrueAdmin || isPrivateUser || (!isSupport && permissions.includes('memorials')) || permissions.includes('memorials:d');
     const displayedTributes = isAdmin ? tributes : tributes.filter(t => String(t.userId) === String(user.id) || String(t.user_id) === String(user.id));
     const hasActiveSubscription = isAdmin || user.subscriptionStatus === 'active';
 
