@@ -23,10 +23,11 @@ const Tributes = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-7xl mx-auto">
-                    {tributes.filter(t =>
-                        (t.subscriptionStatus === 'active' || t.subscriptionStatus === 'trial' || t.isLifetime === true) &&
-                        (t.status === 'public' || !t.status)
-                    ).slice(-4).reverse().map((tribute) => (
+                    {tributes
+                        .filter(t => t.status === 'public' || !t.status)
+                        .sort((a, b) => new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0))
+                        .slice(0, 4)
+                        .map((tribute) => (
                         <div key={tribute.id} className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow flex flex-col items-start">
                             {/* Top Section: Image + Name/Date */}
                             <div className="flex items-center gap-6 mb-6 w-full">
